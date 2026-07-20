@@ -4,6 +4,7 @@ const operations: Array<{ id: OperationMode; label: string; description: string 
   { id: "sign", label: "Подписать", description: "Создать отсоединённую CAdES-подпись .sig" },
   { id: "verify", label: "Проверить", description: "Проверить подпись, сертификат и целостность" },
   { id: "encrypt", label: "Зашифровать", description: "Защитить сертификатом или паролем" },
+  { id: "decrypt", label: "Расшифровать", description: "Открыть контейнер .p7m или .sfenc" },
 ];
 
 interface OperationTabsProps {

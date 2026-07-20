@@ -7,11 +7,15 @@ import { ProviderStatus } from "@/features/crypto-providers/components/provider-
 import { detectCryptoCapabilities, getCheckingCapabilities } from "@/features/crypto-providers/lib/detect-capabilities";
 import {
   listCryptoProCertificates,
+  encryptFileWithCryptoPro,
+  decryptFileWithCryptoPro,
   signFileWithCryptoPro,
   verifyFileWithCryptoPro,
   type CryptoProCertificate,
   type CryptoProVerificationResult,
 } from "@/features/crypto-providers/lib/cryptopro-signer";
+import { decryptFileWithPassword, encryptFileWithPassword } from "@/features/crypto-providers/lib/password-encryption";
+import { signFileWithPfx } from "@/features/crypto-providers/lib/pfx-signer";
 import type { CryptoCapability } from "@/features/crypto-providers/types";
 import { FileDropzone } from "@/features/workspace/components/file-dropzone";
 import { FileQueue } from "@/features/workspace/components/file-queue";
@@ -24,6 +28,7 @@ const initialSignSettings: SignSettings = {
   source: "cryptopro",
   signatureCount: 1,
   certificateThumbprints: [],
+  pfxPassword: "",
   detached: true,
   timestamp: false,
 };
@@ -43,7 +48,11 @@ export default function Home() {
   const [messages, setMessages] = useState<string[]>([]);
   const [capabilities, setCapabilities] = useState<CryptoCapability[]>(getCheckingCapabilities);
   const [signSettings, setSignSettings] = useState<SignSettings>(initialSignSettings);
-  const [encryptSettings, setEncryptSettings] = useState<EncryptSettings>({ mode: "certificate" });
+  const [encryptSettings, setEncryptSettings] = useState<EncryptSettings>({
+    mode: "certificate",
+    recipientThumbprint: "",
+    password: "",
+  });
   const [certificates, setCertificates] = useState<CryptoProCertificate[]>([]);
   const [certificateError, setCertificateError] = useState("");
   const [certificatesLoading, setCertificatesLoading] = useState(true);
@@ -91,6 +100,7 @@ export default function Home() {
     const count = items.length;
     if (operation === "verify") return `Проверить ${count || ""} ${pluralize(count, "файл", "файла", "файлов")}`.trim();
     if (operation === "encrypt") return `Зашифровать ${count || ""} ${pluralize(count, "файл", "файла", "файлов")}`.trim();
+    if (operation === "decrypt") return `Расшифровать ${count || ""} ${pluralize(count, "файл", "файла", "файлов")}`.trim();
     return `Подписать ${count || ""} ${pluralize(count, "файл", "файла", "файлов")}`.trim();
   }, [items.length, operation]);
 
@@ -115,12 +125,16 @@ export default function Home() {
       await handleVerify();
       return;
     }
-    if (operation !== "sign") {
-      setMessages(["Для этого режима криптографическая операция пока не подключена."]);
+    if (operation === "encrypt") {
+      await handleEncrypt();
       return;
     }
-    if (signSettings.source !== "cryptopro") {
-      setMessages(["Импорт PFX/P12 пока не подключён. Выберите хранилище Windows / токен через КриптоПро."]);
+    if (operation === "decrypt") {
+      await handleDecrypt();
+      return;
+    }
+    if (operation !== "sign") {
+      setMessages(["Для этого режима криптографическая операция пока не подключена."]);
       return;
     }
     if (signSettings.timestamp) {
@@ -128,12 +142,17 @@ export default function Home() {
       return;
     }
     const thumbprints = signSettings.certificateThumbprints.slice(0, signSettings.signatureCount);
-    if (thumbprints.length !== signSettings.signatureCount || thumbprints.some((value) => !value)) {
-      setMessages(["Выберите сертификат для каждой подписи."]);
-      return;
-    }
-    if (new Set(thumbprints).size !== thumbprints.length) {
-      setMessages(["Для двух независимых подписей выберите два разных сертификата."]);
+    if (signSettings.source === "cryptopro") {
+      if (thumbprints.length !== signSettings.signatureCount || thumbprints.some((value) => !value)) {
+        setMessages(["Выберите сертификат для каждой подписи."]);
+        return;
+      }
+      if (new Set(thumbprints).size !== thumbprints.length) {
+        setMessages(["Для двух независимых подписей выберите два разных сертификата."]);
+        return;
+      }
+    } else if (!signSettings.pfxFile) {
+      setMessages(["Выберите файл PFX/P12."]);
       return;
     }
 
@@ -143,9 +162,14 @@ export default function Home() {
     for (const item of items) {
       setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "processing", progress: 20 } : entry));
       try {
-        for (let index = 0; index < thumbprints.length; index += 1) {
-          const signature = await signFileWithCryptoPro(item.file, thumbprints[index]);
-          downloadBlob(signature, signatureName(item.file.name, index, thumbprints.length));
+        if (signSettings.source === "pfx" && signSettings.pfxFile) {
+          const signature = await signFileWithPfx(item.file, signSettings.pfxFile, signSettings.pfxPassword);
+          downloadBlob(signature, `${item.file.name}.sig`);
+        } else {
+          for (let index = 0; index < thumbprints.length; index += 1) {
+            const signature = await signFileWithCryptoPro(item.file, thumbprints[index]);
+            downloadBlob(signature, signatureName(item.file.name, index, thumbprints.length));
+          }
         }
         setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "completed", progress: 100, error: undefined } : entry));
       } catch (error) {
@@ -206,6 +230,65 @@ export default function Home() {
     setProcessing(false);
   }
 
+  async function handleEncrypt() {
+    if (encryptSettings.mode === "certificate" && !encryptSettings.recipientThumbprint) {
+      setMessages(["Выберите сертификат получателя."]);
+      return;
+    }
+    if (encryptSettings.mode === "password" && encryptSettings.password.length < 8) {
+      setMessages(["Пароль должен содержать не менее 8 символов."]);
+      return;
+    }
+    setProcessing(true);
+    setMessages([]);
+    for (const item of items) {
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "processing", progress: 30 } : entry));
+      try {
+        const encrypted = encryptSettings.mode === "certificate"
+          ? await encryptFileWithCryptoPro(item.file, encryptSettings.recipientThumbprint)
+          : await encryptFileWithPassword(item.file, encryptSettings.password);
+        const extension = encryptSettings.mode === "certificate" ? ".p7m" : ".sfenc";
+        downloadBlob(encrypted, `${item.file.name}${extension}`);
+        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "completed", progress: 100, error: undefined } : entry));
+      } catch (error) {
+        const message = errorMessage(error);
+        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "error", progress: 0, error: message } : entry));
+        setMessages((current) => [...current, `${item.file.name}: ${message}`]);
+      }
+    }
+    setProcessing(false);
+  }
+
+  async function handleDecrypt() {
+    const expectedExtension = encryptSettings.mode === "certificate" ? ".p7m" : ".sfenc";
+    const invalid = items.filter((item) => !item.file.name.toLowerCase().endsWith(expectedExtension));
+    if (invalid.length) {
+      setMessages(invalid.map((item) => `${item.file.name}: ожидается контейнер ${expectedExtension}.`));
+      return;
+    }
+    if (encryptSettings.mode === "password" && !encryptSettings.password) {
+      setMessages(["Введите пароль контейнера."]);
+      return;
+    }
+    setProcessing(true);
+    setMessages([]);
+    for (const item of items) {
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "processing", progress: 30 } : entry));
+      try {
+        const decrypted = encryptSettings.mode === "certificate"
+          ? await decryptFileWithCryptoPro(item.file)
+          : await decryptFileWithPassword(item.file, encryptSettings.password);
+        downloadBlob(decrypted, item.file.name.slice(0, -expectedExtension.length));
+        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "completed", progress: 100, error: undefined } : entry));
+      } catch (error) {
+        const message = errorMessage(error);
+        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "error", progress: 0, error: message } : entry));
+        setMessages((current) => [...current, `${item.file.name}: ${message}`]);
+      }
+    }
+    setProcessing(false);
+  }
+
   return (
     <div className="app-shell">
       <div className="page-container">
@@ -239,7 +322,9 @@ export default function Home() {
               )}
               <FileQueue items={items} onRemove={removeFile} onClear={() => setItems([])} />
               <Button className="main-action" disabled={!items.length || processing} onClick={() => void handleStart()}>
-                {processing ? (operation === "verify" ? "Проверка…" : "Подписание…") : actionLabel}
+                {processing
+                  ? operation === "verify" ? "Проверка…" : operation === "encrypt" ? "Шифрование…" : operation === "decrypt" ? "Расшифрование…" : "Подписание…"
+                  : actionLabel}
               </Button>
               <p className="action-hint">На первом этапе поддерживается пакет до 100 файлов и до 2 ГБ на файл.</p>
             </section>

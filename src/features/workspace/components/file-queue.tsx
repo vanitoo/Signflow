@@ -50,8 +50,8 @@ function fileExtension(name: string): string {
 }
 
 function statusLabel(item: QueueItem): string {
-  if (item.status === "processing") return "Подписание…";
-  if (item.status === "completed") return "Подпись сохранена";
-  if (item.status === "error") return item.error || "Ошибка подписания";
+  if (item.status === "processing") return "Обработка…";
+  if (item.status === "completed") return "Обработка завершена";
+  if (item.status === "error") return item.error || "Ошибка обработки";
   return "Готов к обработке";
 }

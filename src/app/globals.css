@@ -38,7 +38,7 @@ h1 span { color:var(--accent); }
 .hero-trust { display:grid; gap:.65rem; min-width:180px; color:var(--muted); font-size:.84rem; }
 .hero-trust span::before { content:"✓"; margin-right:.55rem; color:var(--accent); font-weight:900; }
 
-.operation-tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:1rem; }
+.operation-tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:1rem; }
 .operation-tab { display:flex; flex-direction:column; gap:.35rem; min-height:92px; padding:1rem 1.15rem; text-align:left; color:var(--foreground); background:var(--surface); border:1px solid var(--border); border-radius:1rem; cursor:pointer; transition:.18s ease; }
 .operation-tab:hover { background:var(--surface-strong); transform:translateY(-1px); }
 .operation-tab strong { font-size:1rem; }

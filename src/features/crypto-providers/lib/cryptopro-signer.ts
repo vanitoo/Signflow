@@ -7,6 +7,7 @@ const CAPICOM_CERTIFICATE_FIND_SHA1_HASH = 0;
 const CAPICOM_CERTIFICATE_INCLUDE_END_ENTITY_ONLY = 2;
 const CADESCOM_BASE64_TO_BINARY = 1;
 const CADESCOM_CADES_BES = 1;
+const CADESCOM_ENCODE_BASE64 = 0;
 
 type AsyncValue<T> = T | Promise<T>;
 
@@ -43,6 +44,19 @@ interface SignedData {
   SignCades(signer: Signer, type: number, detached: boolean): Promise<string>;
   VerifyCades(signature: string, type: number, detached: boolean): Promise<void>;
   Signers: AsyncValue<Signers>;
+}
+
+interface EnvelopedRecipients {
+  Add(certificate: Certificate): Promise<void>;
+}
+
+interface EnvelopedData {
+  propset_ContentEncoding(value: number): Promise<void>;
+  propset_Content(value: string): Promise<void>;
+  Recipients: AsyncValue<EnvelopedRecipients>;
+  Content: AsyncValue<string>;
+  Encrypt(encoding: number): Promise<string>;
+  Decrypt(message: string): Promise<void>;
 }
 
 interface Signers {
@@ -160,6 +174,34 @@ export async function verifyFileWithCryptoPro(
     });
   }
   return result;
+}
+
+export async function encryptFileWithCryptoPro(file: File, thumbprint: string): Promise<Blob> {
+  const store = await createObject<Store>("CAdESCOM.Store");
+  await store.Open(CAPICOM_CURRENT_USER_STORE, CAPICOM_MY_STORE, CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED);
+  try {
+    const certificates = await store.Certificates;
+    const matches = await certificates.Find(CAPICOM_CERTIFICATE_FIND_SHA1_HASH, thumbprint);
+    if ((await matches.Count) < 1) throw new Error("Сертификат получателя не найден в хранилище.");
+    const certificate = await matches.Item(1);
+    const envelopedData = await createObject<EnvelopedData>("CAdESCOM.CPEnvelopedData");
+    await envelopedData.propset_ContentEncoding(CADESCOM_BASE64_TO_BINARY);
+    await envelopedData.propset_Content(await fileToBase64(file));
+    const recipients = await envelopedData.Recipients;
+    await recipients.Add(certificate);
+    const encrypted = await envelopedData.Encrypt(CADESCOM_ENCODE_BASE64);
+    return new Blob([base64ToArrayBuffer(encrypted)], { type: "application/pkcs7-mime" });
+  } finally {
+    await store.Close();
+  }
+}
+
+export async function decryptFileWithCryptoPro(file: File): Promise<Blob> {
+  const envelopedData = await createObject<EnvelopedData>("CAdESCOM.CPEnvelopedData");
+  await envelopedData.propset_ContentEncoding(CADESCOM_BASE64_TO_BINARY);
+  await envelopedData.Decrypt(await signatureFileToBase64(file));
+  const content = await envelopedData.Content;
+  return new Blob([base64ToArrayBuffer(content)], { type: "application/octet-stream" });
 }
 
 async function createObject<T>(name: string): Promise<T> {

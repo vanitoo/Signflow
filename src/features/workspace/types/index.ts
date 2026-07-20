@@ -1,4 +1,4 @@
-export type OperationMode = "sign" | "verify" | "encrypt";
+export type OperationMode = "sign" | "verify" | "encrypt" | "decrypt";
 
 export type QueueItemStatus = "ready" | "processing" | "completed" | "error";
 
@@ -17,10 +17,14 @@ export interface SignSettings {
   source: SignatureSource;
   signatureCount: 1 | 2;
   certificateThumbprints: string[];
+  pfxFile?: File;
+  pfxPassword: string;
   detached: true;
   timestamp: boolean;
 }
 
 export interface EncryptSettings {
   mode: EncryptionMode;
+  recipientThumbprint: string;
+  password: string;
 }

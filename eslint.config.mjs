@@ -5,5 +5,13 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "coverage/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "coverage/**",
+    "next-env.d.ts",
+    "backend/**",
+    "frontend/**",
+    "public/cadesplugin_api.js",
+  ]),
 ]);

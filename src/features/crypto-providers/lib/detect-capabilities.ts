@@ -91,7 +91,7 @@ async function detectCryptoPro(): Promise<CryptoCapability> {
 }
 
 const CADES_PLUGIN_SCRIPT_URLS = [
-  "/cadesplugin_api.js",
+  `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/cadesplugin_api.js`,
   "https://www.cryptopro.ru/sites/default/files/products/cades/cadesplugin_api.js",
   "https://cdn.jsdelivr.net/npm/crypto-pro-actual-cades-plugin@2.4.1/dist/crypto-pro-actual-cades-plugin.min.js",
   "https://unpkg.com/crypto-pro-actual-cades-plugin@2.4.1/dist/crypto-pro-actual-cades-plugin.min.js",

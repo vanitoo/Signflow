@@ -13,7 +13,13 @@ SignFlow is a local-first application for signing, verifying, batch-processing a
 - Certificate- and password-based encryption paths
 - Optional timestamp, CRL and OCSP network access only after an explicit user action
 
-> The current `0.1.0` stage contains the application architecture, multi-file workspace, provider capability detection and validated queue. Cryptographic adapters are the next implementation stage.
+The current version supports CryptoPro and RSA PFX/P12 signing, detached-signature verification, and certificate- or password-based encryption and decryption.
+
+## GitHub Pages
+
+The site is exported as static files and deployed by `.github/workflows/deploy-pages.yml` after every push to `main`.
+
+In the repository settings, select **Settings → Pages → Build and deployment → Source: GitHub Actions**. The project page will be available at `https://vanitoo.github.io/Signflow/`.
 
 ## Privacy
 

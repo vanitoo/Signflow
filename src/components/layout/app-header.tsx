@@ -7,7 +7,7 @@ export function AppHeader() {
       </a>
       <div className="header-actions">
         <span className="local-label">Файлы не отправляются на сервер</span>
-        <a className="github-link" href="https://github.com/OWNER/signflow" target="_blank" rel="noreferrer">GitHub</a>
+        <a className="github-link" href="https://github.com/vanitoo/Signflow" target="_blank" rel="noreferrer">GitHub</a>
       </div>
     </header>
   );

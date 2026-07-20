@@ -1,12 +1,14 @@
-# New project checklist
+# Project release checklist
 
-1. Rename the repository and package in `package.json`.
-2. Replace title and description in `src/app/layout.tsx`.
-3. Replace `OWNER/REPOSITORY` in the header.
-4. Rename `file-processing` to the actual feature.
-5. Implement validation and processing in the feature folder.
-6. Add accepted MIME types and size limits to the dropzone.
-7. Add unit tests for malformed, empty and large inputs.
-8. Run `npm run check`.
-9. Enable GitHub Pages with **GitHub Actions** as source.
-10. Review `SECURITY.md` before adding any dependency or network request.
+- [x] Repository, package, title and description use the SignFlow name.
+- [x] Header links to `vanitoo/Signflow`.
+- [x] Signing, verification, encryption and decryption are implemented.
+- [x] Static export respects the GitHub Pages `/Signflow` base path.
+- [x] CI runs TypeScript, ESLint, Vitest and the production build.
+- [x] GitHub Pages deployment uploads the generated `out/` directory.
+- [ ] Configure **Settings → Pages → Source: GitHub Actions** in the repository.
+- [ ] Add malformed, empty and large-input tests.
+- [ ] Add real CryptoPro and PFX/CMS fixtures.
+- [ ] Review dependency audit findings before creating a release tag.
+- [ ] Complete a Windows browser smoke test with CryptoPro CSP and the extension installed.
+- [ ] Confirm signing, verification, `.p7m` and `.sfenc` round trips on the deployed HTTPS origin.

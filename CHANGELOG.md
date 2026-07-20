@@ -1,33 +1,45 @@
-## 0.1.2
-
-- Удалена npm-зависимость `@grafit/cadesplugin`, из-за которой установка могла падать с HTTP 503.
-- API КриптоПро теперь загружается в браузере с резервного CDN.
-- Добавлена последовательная попытка загрузки через jsDelivr и unpkg.
+# Changelog
 
 ## [Unreleased]
 
+### Added
+
+- CryptoPro CAdES-BES detached signing with Windows-store and hardware-token certificates.
+- One or two independent signatures over the same source file.
+- RSA PFX/P12 import and detached PKCS#7 signing.
+- Detached signature verification with expandable signer and certificate details.
+- CMS EnvelopedData certificate encryption and CryptoPro decryption (`.p7m`).
+- AES-256-GCM password encryption and decryption (`.sfenc`) using PBKDF2-SHA-256 with 250,000 iterations.
+- Vitest coverage for password-encryption round trips and error cases.
+- GitHub Pages static-export deployment workflow.
+
+### Changed
+
+- The official CryptoPro loader is served locally before any fallback source.
+- CryptoPro readiness uses the asynchronous CAdES API and a real `CAdESCOM.About` probe.
+- Queue rows now display processing, completion and error states.
+- CI runs type checking, linting, tests and a production build.
+- GitHub Pages builds use the `/Signflow` base path for scripts, styles and public assets.
+
 ### Fixed
 
-- Replaced the unreliable synchronous `window.cadesplugin` check with the official asynchronous CAdES API bootstrap.
-- Added real communication test with `CAdESCOM.About`, including CryptoPro plug-in and CSP version reporting.
-- Added retry action and actionable diagnostics for Yandex Browser and other Chromium-based browsers.
+- Fixed CryptoPro `CreateObjectAsync` initialization and delayed extension readiness.
+- Fixed CSP and plug-in version display returning native function source text.
+- Fixed public `cadesplugin_api.js` loading on GitHub project pages.
 
-# Changelog
+## [0.1.2] - 2026-07-18
+
+### Changed
+
+- Removed the unreliable `@grafit/cadesplugin` npm dependency.
+- Added browser-side CAdES API loading with fallback sources.
 
 ## [0.1.0] - 2026-07-18
 
 ### Added
 
 - SignFlow branding and application metadata.
-- Three operation modes: signing, verification and encryption.
+- Signing, verification and encryption workspace modes.
 - Multi-file drag-and-drop queue with duplicate, count and size validation.
-- Sign settings for CryptoPro or PFX/P12 and one or two independent signatures.
-- Explicit timestamp option with a network warning.
-- Encryption mode choice for certificate or password.
 - Runtime detection for CryptoPro Browser plug-in and Web Crypto API.
-- Architecture, security model and implementation roadmap.
-
-### Changed
-
-- Replaced the single-file template demo with a feature-oriented workspace.
-- Removed generated `tsconfig.tsbuildinfo` from the repository.
+- Initial architecture, security model and implementation roadmap.

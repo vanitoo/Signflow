@@ -2,27 +2,46 @@
 
 ## Protected data
 
-- Original files
-- Private keys and PFX/P12 passwords
-- Certificate selections
-- Generated signatures and encrypted containers
+- Original and decrypted files.
+- PFX/P12 containers, private keys and passwords.
+- CryptoPro certificate selections and private-key operations.
+- Generated signatures and encrypted containers.
 
-## Rules
+## Implemented controls
 
-1. Private keys must never be exported from CryptoPro or token storage.
-2. PFX/P12 passwords must remain in memory only and must not be persisted.
-3. No file contents may be logged.
-4. No analytics, telemetry or remote error reporting.
-5. Network validation and timestamping are opt-in operations.
-6. Verification results must distinguish cryptographic validity, certificate time validity, trust-chain status and revocation status.
-7. Third-party scripts and remote fonts are prohibited.
-8. Dependencies added to cryptographic code require review and justification.
+1. CryptoPro and token private keys are used through CAdESCOM and are never exported.
+2. PFX/P12 files and passwords remain in browser memory and are not persisted by SignFlow.
+3. Password containers use AES-256-GCM with PBKDF2-SHA-256, 250,000 iterations, a random salt and a random IV.
+4. No analytics, telemetry, remote error reporting or application-server uploads are present.
+5. File contents and passwords are not intentionally logged.
+6. The official CAdES loader is vendored in `public/` and loaded from the application origin first.
+7. Dependencies that process cryptographic material are isolated in provider modules.
 
-## Threats to address next
+## Validation semantics
 
-- Malicious or malformed ASN.1/CMS input
-- Memory exhaustion from large files or containers
-- PFX password brute-force behavior
-- Provider spoofing and untrusted browser extensions
-- Unsafe filename handling in batch downloads
-- CORS and privacy leakage in TSA/CRL/OCSP requests
+A successful detached-signature check currently means that CryptoPro verified the CMS/CAdES signature against the supplied document. It does not yet prove:
+
+- trust in the full certificate chain;
+- certificate revocation status;
+- validity at a trusted timestamp;
+- availability or policy compliance of external CRL/OCSP/TSA services.
+
+The UI states this limitation in verification details.
+
+## Remaining threats
+
+- Malicious or malformed ASN.1, CMS, PFX and JSON containers.
+- Memory exhaustion from whole-file buffering and Base64 expansion.
+- PFX password guessing and excessive repeated attempts.
+- Provider spoofing or a compromised browser extension.
+- Unsafe filenames and browser restrictions during batch downloads.
+- Supply-chain risk in npm dependencies and external CAdES fallback sources.
+- CORS and privacy leakage when TSA, CRL or OCSP support is introduced.
+- Loss of `.sfenc` metadata or format compatibility without a migration policy.
+
+## Release requirements
+
+- Review `npm audit` findings without applying breaking upgrades blindly.
+- Add malformed-container and cryptographic fixture tests.
+- Add practical file-size limits based on measured browser memory use.
+- Document every future network destination and the data sent to it.

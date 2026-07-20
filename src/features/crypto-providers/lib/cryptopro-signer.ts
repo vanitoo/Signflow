@@ -7,6 +7,7 @@ const CAPICOM_CERTIFICATE_FIND_SHA1_HASH = 0;
 const CAPICOM_CERTIFICATE_INCLUDE_END_ENTITY_ONLY = 2;
 const CADESCOM_BASE64_TO_BINARY = 1;
 const CADESCOM_CADES_BES = 1;
+const CADESCOM_CADES_T = 0x5;
 const CADESCOM_ENCODE_BASE64 = 0;
 
 type AsyncValue<T> = T | Promise<T>;
@@ -31,11 +32,18 @@ interface Certificate {
   ValidFromDate: AsyncValue<string | Date>;
   SerialNumber: AsyncValue<string>;
   HasPrivateKey(): Promise<boolean>;
+  IsValid(): Promise<CertificateStatus>;
+}
+
+interface CertificateStatus {
+  Result: AsyncValue<boolean>;
 }
 
 interface Signer {
   propset_Certificate(certificate: Certificate): Promise<void>;
   propset_Options(value: number): Promise<void>;
+  propset_TSAAddress(value: string): Promise<void>;
+  propset_CheckCertificate(value: boolean): Promise<void>;
 }
 
 interface SignedData {
@@ -44,6 +52,7 @@ interface SignedData {
   SignCades(signer: Signer, type: number, detached: boolean): Promise<string>;
   VerifyCades(signature: string, type: number, detached: boolean): Promise<void>;
   Signers: AsyncValue<Signers>;
+  GetMsgType(signature: string): Promise<number>;
 }
 
 interface EnvelopedRecipients {
@@ -105,7 +114,11 @@ export async function listCryptoProCertificates(): Promise<CryptoProCertificate[
   }
 }
 
-export async function signFileWithCryptoPro(file: File, thumbprint: string): Promise<Blob> {
+export async function signFileWithCryptoPro(
+  file: File,
+  thumbprint: string,
+  options: { timestamp: boolean; tsaAddress: string } = { timestamp: false, tsaAddress: "" },
+): Promise<Blob> {
   const store = await createObject<Store>("CAdESCOM.Store");
   await store.Open(CAPICOM_CURRENT_USER_STORE, CAPICOM_MY_STORE, CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED);
   try {
@@ -117,11 +130,19 @@ export async function signFileWithCryptoPro(file: File, thumbprint: string): Pro
     const signer = await createObject<Signer>("CAdESCOM.CPSigner");
     await signer.propset_Certificate(certificate);
     await signer.propset_Options(CAPICOM_CERTIFICATE_INCLUDE_END_ENTITY_ONLY);
+    if (options.timestamp) {
+      await signer.propset_CheckCertificate(true);
+      await signer.propset_TSAAddress(options.tsaAddress);
+    }
 
     const signedData = await createObject<SignedData>("CAdESCOM.CadesSignedData");
     await signedData.propset_ContentEncoding(CADESCOM_BASE64_TO_BINARY);
     await signedData.propset_Content(await fileToBase64(file));
-    const signature = await signedData.SignCades(signer, CADESCOM_CADES_BES, true);
+    const signature = await signedData.SignCades(
+      signer,
+      options.timestamp ? CADESCOM_CADES_T : CADESCOM_CADES_BES,
+      true,
+    );
     return new Blob([base64ToArrayBuffer(signature)], { type: "application/pkcs7-signature" });
   } finally {
     await store.Close();
@@ -136,17 +157,22 @@ export interface CryptoProVerificationResult {
   serialNumber: string;
   validFrom: string;
   validTo: string;
+  signatureType: "CAdES-BES" | "CAdES-T" | "CAdES-X Long Type 1" | "CAdES";
+  chainValid?: boolean;
+  chainError?: string;
 }
 
 export async function verifyFileWithCryptoPro(
   file: File,
   signatureFile: File,
+  options: { onlineValidation: boolean } = { onlineValidation: false },
 ): Promise<CryptoProVerificationResult[]> {
   const signedData = await createObject<SignedData>("CAdESCOM.CadesSignedData");
   await signedData.propset_ContentEncoding(CADESCOM_BASE64_TO_BINARY);
   await signedData.propset_Content(await fileToBase64(file));
   const signature = await signatureFileToBase64(signatureFile);
   await signedData.VerifyCades(signature, CADESCOM_CADES_BES, true);
+  const signatureType = cadesTypeName(await readCadesType(signedData, signature));
 
   const signers = await signedData.Signers;
   const count = await signers.Count;
@@ -163,6 +189,18 @@ export async function verifyFileWithCryptoPro(
       certificate.ValidFromDate,
       certificate.ValidToDate,
     ]);
+    let chainValid: boolean | undefined;
+    let chainError: string | undefined;
+    if (options.onlineValidation) {
+      try {
+        const status = await certificate.IsValid();
+        chainValid = await status.Result;
+        if (!chainValid) chainError = "Цепочка не построена, сертификат недействителен или отозван.";
+      } catch (error) {
+        chainValid = false;
+        chainError = cryptoProError(error);
+      }
+    }
     result.push({
       signer: readableName(subject),
       issuer: readableName(issuer),
@@ -171,9 +209,35 @@ export async function verifyFileWithCryptoPro(
       serialNumber,
       validFrom: new Date(validFrom).toLocaleDateString("ru-RU"),
       validTo: new Date(validTo).toLocaleDateString("ru-RU"),
+      signatureType,
+      chainValid,
+      chainError,
     });
   }
   return result;
+}
+
+async function readCadesType(signedData: SignedData, signature: string): Promise<number> {
+  try {
+    return await signedData.GetMsgType(signature);
+  } catch {
+    return CADESCOM_CADES_BES;
+  }
+}
+
+function cadesTypeName(type: number): CryptoProVerificationResult["signatureType"] {
+  if (type === CADESCOM_CADES_T) return "CAdES-T";
+  if (type === 0x5d) return "CAdES-X Long Type 1";
+  if (type === CADESCOM_CADES_BES) return "CAdES-BES";
+  return "CAdES";
+}
+
+function cryptoProError(error: unknown): string {
+  try {
+    return window.cadesplugin?.getLastError?.(error) || (error instanceof Error ? error.message : String(error));
+  } catch {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 export async function encryptFileWithCryptoPro(file: File, thumbprint: string): Promise<Blob> {

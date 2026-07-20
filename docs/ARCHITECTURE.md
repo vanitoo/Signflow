@@ -33,6 +33,8 @@ The page currently orchestrates adapters directly. Moving orchestration behind p
 - RSA PFX/P12 produces detached CMS/PKCS#7 signatures with SHA-256.
 - Two CryptoPro signatures are independent files (`.1.sig` and `.2.sig`), not countersignatures.
 - Verification currently accepts detached binary or Base64 CMS/CAdES signatures.
+- CryptoPro can create CAdES-T when the user explicitly enables timestamping and supplies a TSA URL.
+- Online verification is opt-in and delegates chain/revocation processing to CryptoPro and the Windows certificate infrastructure.
 
 ## Encryption formats
 

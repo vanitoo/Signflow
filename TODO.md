@@ -20,7 +20,7 @@
 - [x] Show expandable per-signer certificate and validation details.
 - [ ] Parse and verify attached CMS/CAdES containers.
 - [ ] Validate certificate chains against the operating-system trust store.
-- [ ] Add explicit certificate-time, CRL and OCSP statuses.
+- [x] Add explicit opt-in certificate-chain and revocation checking through CryptoPro/Windows CRL/OCSP configuration.
 - [ ] Export verification reports as JSON/PDF.
 
 ## 0.4 — batch and timestamp
@@ -30,7 +30,7 @@
 - [ ] Move hashing, Base64 conversion and ASN.1 parsing to Web Workers.
 - [ ] Replace whole-file buffering with streaming where provider APIs permit it.
 - [ ] Add bounded concurrency, cancellation and safe multi-file download packaging.
-- [ ] Add an explicit TSA configuration flow and CAdES-T signatures.
+- [x] Add an explicit TSA configuration flow and CryptoPro CAdES-T signatures.
 
 ## 0.5 — encryption and decryption
 

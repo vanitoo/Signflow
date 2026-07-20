@@ -1,5 +1,7 @@
 # SignFlow
 
+[English](README.md) | [Русский](README.ru.md)
+
 SignFlow is a local-first browser application for signing, verifying, encrypting and decrypting files without uploading document contents to an application server.
 
 ## Implemented
@@ -8,6 +10,8 @@ SignFlow is a local-first browser application for signing, verifying, encrypting
 - Windows certificate store and hardware-token certificate discovery.
 - One or two independent CryptoPro signatures over the same source file.
 - Detached CMS/CAdES verification with signer and certificate details.
+- CAdES-T creation through an explicitly configured TSA endpoint.
+- Optional certificate-chain and revocation checks using CryptoPro/Windows CRL and OCSP configuration.
 - RSA PFX/P12 signing with in-memory password handling.
 - Certificate encryption as CMS EnvelopedData (`.p7m`) and CryptoPro decryption.
 - Password encryption as SignFlow AES-256-GCM containers (`.sfenc`) and decryption.
@@ -18,7 +22,7 @@ SignFlow is a local-first browser application for signing, verifying, encrypting
 
 - GOST PFX/P12 containers are not parsed by the browser RSA adapter; import them into CryptoPro first.
 - PFX/P12 signing currently supports one RSA signer and SHA-256.
-- Trusted timestamping (CAdES-T), CRL/OCSP checks and trust-chain validation are not implemented yet.
+- CAdES-T requires a reachable TSA and may require a CryptoPro TSP Client license; online revocation checks depend on certificate endpoints, system configuration and potentially a CryptoPro OCSP Client license.
 - Verification currently handles detached signatures, not attached CMS/CAdES containers.
 - Large files are processed in browser memory; streaming, Web Workers and cancellation remain planned.
 - The `.sfenc` password container is a SignFlow format, not a general-purpose CMS standard.

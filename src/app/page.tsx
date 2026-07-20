@@ -31,6 +31,7 @@ const initialSignSettings: SignSettings = {
   pfxPassword: "",
   detached: true,
   timestamp: false,
+  tsaAddress: "",
 };
 
 interface VerificationReport {
@@ -38,6 +39,7 @@ interface VerificationReport {
   sourceName: string;
   signatureName: string;
   valid: boolean;
+  integrityValid: boolean;
   signers: CryptoProVerificationResult[];
   error?: string;
 }
@@ -58,6 +60,7 @@ export default function Home() {
   const [certificatesLoading, setCertificatesLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [verificationReports, setVerificationReports] = useState<VerificationReport[]>([]);
+  const [onlineValidation, setOnlineValidation] = useState(false);
 
   async function refreshCapabilities() {
     setCapabilities(getCheckingCapabilities());
@@ -137,8 +140,12 @@ export default function Home() {
       setMessages(["Для этого режима криптографическая операция пока не подключена."]);
       return;
     }
-    if (signSettings.timestamp) {
-      setMessages(["Для метки времени необходимо настроить адрес TSA. Отключите метку времени и создайте CAdES-BES."]);
+    if (signSettings.timestamp && signSettings.source !== "cryptopro") {
+      setMessages(["CAdES-T поддерживается через КриптоПро. Для PFX/P12 отключите метку времени."]);
+      return;
+    }
+    if (signSettings.timestamp && !isHttpUrl(signSettings.tsaAddress)) {
+      setMessages(["Укажите корректный HTTP(S)-адрес службы TSA."]);
       return;
     }
     const thumbprints = signSettings.certificateThumbprints.slice(0, signSettings.signatureCount);
@@ -167,7 +174,10 @@ export default function Home() {
           downloadBlob(signature, `${item.file.name}.sig`);
         } else {
           for (let index = 0; index < thumbprints.length; index += 1) {
-            const signature = await signFileWithCryptoPro(item.file, thumbprints[index]);
+            const signature = await signFileWithCryptoPro(item.file, thumbprints[index], {
+              timestamp: signSettings.timestamp,
+              tsaAddress: signSettings.tsaAddress,
+            });
             downloadBlob(signature, signatureName(item.file.name, index, thumbprints.length));
           }
         }
@@ -197,12 +207,13 @@ export default function Home() {
           : entry,
       ));
       try {
-        const signers = await verifyFileWithCryptoPro(source.file, signature.file);
+        const signers = await verifyFileWithCryptoPro(source.file, signature.file, { onlineValidation });
         setVerificationReports((current) => [...current, {
           id: signature.id,
           sourceName: source.file.name,
           signatureName: signature.file.name,
-          valid: true,
+          valid: signers.every((signer) => signer.chainValid !== false),
+          integrityValid: true,
           signers,
         }]);
         setItems((current) => current.map((entry) =>
@@ -217,6 +228,7 @@ export default function Home() {
           sourceName: source.file.name,
           signatureName: signature.file.name,
           valid: false,
+          integrityValid: false,
           signers: [],
           error: message,
         }]);
@@ -337,8 +349,10 @@ export default function Home() {
                 certificates={certificates}
                 certificatesLoading={certificatesLoading}
                 certificateError={certificateError}
+                onlineValidation={onlineValidation}
                 onSignSettingsChange={setSignSettings}
                 onEncryptSettingsChange={setEncryptSettings}
+                onOnlineValidationChange={setOnlineValidation}
               />
               <ProviderStatus capabilities={capabilities} onRetry={() => void refreshCapabilities()} />
             </aside>
@@ -368,7 +382,11 @@ function VerificationReports({ reports }: { reports: VerificationReport[] }) {
           <summary>
             <span className="verification-icon" aria-hidden>{report.valid ? "✓" : "×"}</span>
             <span>
-              <strong>{report.valid ? "Подпись действительна" : "Подпись недействительна"}</strong>
+              <strong>
+                {report.valid
+                  ? "Подпись действительна"
+                  : report.integrityValid ? "Сертификат не прошёл проверку" : "Подпись недействительна"}
+              </strong>
               <small>{report.signatureName}</small>
             </span>
             <span className="verification-expand">Подробнее</span>
@@ -376,7 +394,7 @@ function VerificationReports({ reports }: { reports: VerificationReport[] }) {
           <div className="verification-details">
             <DetailRow label="Исходный файл" value={report.sourceName} />
             <DetailRow label="Файл подписи" value={report.signatureName} />
-            <DetailRow label="Целостность" value={report.valid ? "Документ не изменён после подписания" : "Проверка не пройдена"} />
+            <DetailRow label="Целостность" value={report.integrityValid ? "Документ не изменён после подписания" : "Проверка не пройдена"} />
             {report.error && <DetailRow label="Ошибка" value={report.error} />}
             {report.signers.map((signer, index) => (
               <div className="signer-details" key={`${signer.thumbprint}-${index}`}>
@@ -384,13 +402,20 @@ function VerificationReports({ reports }: { reports: VerificationReport[] }) {
                 <DetailRow label="Владелец" value={signer.signer} />
                 <DetailRow label="Издатель" value={signer.issuer} />
                 <DetailRow label="Время подписания" value={signer.signingTime} />
+                <DetailRow label="Формат подписи" value={signer.signatureType} />
                 <DetailRow label="Срок сертификата" value={`${signer.validFrom} — ${signer.validTo}`} />
+                {signer.chainValid !== undefined && (
+                  <DetailRow
+                    label="Цепочка и отзыв CRL/OCSP"
+                    value={signer.chainValid ? "Проверка пройдена" : signer.chainError || "Проверка не пройдена"}
+                  />
+                )}
                 <DetailRow label="Серийный номер" value={signer.serialNumber} mono />
                 <DetailRow label="Отпечаток SHA-1" value={signer.thumbprint} mono />
               </div>
             ))}
             <p className="verification-note">
-              Проверена криптографическая целостность CAdES. Доверие к цепочке и отзыв сертификата через CRL/OCSP отдельно не проверялись.
+              CRL/OCSP выполняются только при включённой сетевой проверке и используют адреса из сертификата и настройки КриптоПро/Windows.
             </p>
           </div>
         </details>
@@ -426,6 +451,15 @@ function errorMessage(error: unknown): string {
     return window.cadesplugin?.getLastError?.(error) || (error instanceof Error ? error.message : String(error));
   } catch {
     return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 

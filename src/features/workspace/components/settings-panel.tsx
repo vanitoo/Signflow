@@ -8,8 +8,10 @@ interface SettingsPanelProps {
   certificates: CryptoProCertificate[];
   certificatesLoading: boolean;
   certificateError: string;
+  onlineValidation: boolean;
   onSignSettingsChange: (settings: SignSettings) => void;
   onEncryptSettingsChange: (settings: EncryptSettings) => void;
+  onOnlineValidationChange: (value: boolean) => void;
 }
 
 export function SettingsPanel({
@@ -19,8 +21,10 @@ export function SettingsPanel({
   certificates,
   certificatesLoading,
   certificateError,
+  onlineValidation,
   onSignSettingsChange,
   onEncryptSettingsChange,
+  onOnlineValidationChange,
 }: SettingsPanelProps) {
   if (operation === "verify") {
     return (
@@ -30,6 +34,17 @@ export function SettingsPanel({
           SignFlow проверит целостность, подписи, сертификаты и доступные сведения о доверии. Сетевые CRL и OCSP не выполняются автоматически.
         </p>
         <div className="notice">Для отсоединённой подписи добавьте исходный файл и соответствующий файл <code>.sig</code>.</div>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={onlineValidation}
+            onChange={(event) => onOnlineValidationChange(event.target.checked)}
+          />
+          <span>
+            <strong>Проверить цепочку и отзыв сертификата</strong>
+            <small>КриптоПро может обратиться к CRL/OCSP-адресам из сертификата. Требуется сеть.</small>
+          </span>
+        </label>
       </div>
     );
   }
@@ -224,6 +239,20 @@ export function SettingsPanel({
         />
         <span><strong>Добавить доверенную метку времени</strong><small>Потребуется явное сетевое обращение к TSA</small></span>
       </label>
+      {signSettings.timestamp && (
+        <>
+          <label className="field-label" htmlFor="tsa-address">Адрес службы TSA</label>
+          <input
+            id="tsa-address"
+            className="select"
+            type="url"
+            value={signSettings.tsaAddress}
+            onChange={(event) => onSignSettingsChange({ ...signSettings, tsaAddress: event.target.value })}
+            placeholder="https://tsa.example.ru/tsp/"
+          />
+          <div className="notice">Будет создана CAdES-T. Хэш подписи отправляется указанной службе времени; документ не отправляется.</div>
+        </>
+      )}
 
       <div className="notice">Результат: отсоединённая подпись CAdES в файле <code>.sig</code>. Исходный документ не изменяется.</div>
     </div>

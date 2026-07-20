@@ -21,6 +21,7 @@ export interface SignSettings {
   pfxPassword: string;
   detached: true;
   timestamp: boolean;
+  tsaAddress: string;
 }
 
 export interface EncryptSettings {

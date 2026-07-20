@@ -13,6 +13,8 @@
 - Vitest coverage for password-encryption round trips and error cases.
 - GitHub Pages static-export deployment workflow.
 - Dependency audit enforcement and weekly Dependabot updates.
+- Explicit TSA configuration and CAdES-T signing through CryptoPro.
+- Opt-in certificate-chain and CRL/OCSP revocation checks in verification reports.
 
 ### Changed
 

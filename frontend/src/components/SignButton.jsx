@@ -1,0 +1,1 @@
+export default function SignButton(){return <button>Sign</button>; }

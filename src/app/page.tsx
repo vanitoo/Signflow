@@ -1,0 +1,378 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { AppHeader } from "@/components/layout/app-header";
+import { Button } from "@/components/ui/button";
+import { ProviderStatus } from "@/features/crypto-providers/components/provider-status";
+import { detectCryptoCapabilities, getCheckingCapabilities } from "@/features/crypto-providers/lib/detect-capabilities";
+import {
+  listCryptoProCertificates,
+  signFileWithCryptoPro,
+  verifyFileWithCryptoPro,
+  type CryptoProCertificate,
+  type CryptoProVerificationResult,
+} from "@/features/crypto-providers/lib/cryptopro-signer";
+import type { CryptoCapability } from "@/features/crypto-providers/types";
+import { FileDropzone } from "@/features/workspace/components/file-dropzone";
+import { FileQueue } from "@/features/workspace/components/file-queue";
+import { OperationTabs } from "@/features/workspace/components/operation-tabs";
+import { SettingsPanel } from "@/features/workspace/components/settings-panel";
+import { validateFiles } from "@/features/workspace/model/file-validation";
+import type { EncryptSettings, OperationMode, QueueItem, SignSettings } from "@/features/workspace/types";
+
+const initialSignSettings: SignSettings = {
+  source: "cryptopro",
+  signatureCount: 1,
+  certificateThumbprints: [],
+  detached: true,
+  timestamp: false,
+};
+
+interface VerificationReport {
+  id: string;
+  sourceName: string;
+  signatureName: string;
+  valid: boolean;
+  signers: CryptoProVerificationResult[];
+  error?: string;
+}
+
+export default function Home() {
+  const [operation, setOperation] = useState<OperationMode>("sign");
+  const [items, setItems] = useState<QueueItem[]>([]);
+  const [messages, setMessages] = useState<string[]>([]);
+  const [capabilities, setCapabilities] = useState<CryptoCapability[]>(getCheckingCapabilities);
+  const [signSettings, setSignSettings] = useState<SignSettings>(initialSignSettings);
+  const [encryptSettings, setEncryptSettings] = useState<EncryptSettings>({ mode: "certificate" });
+  const [certificates, setCertificates] = useState<CryptoProCertificate[]>([]);
+  const [certificateError, setCertificateError] = useState("");
+  const [certificatesLoading, setCertificatesLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [verificationReports, setVerificationReports] = useState<VerificationReport[]>([]);
+
+  async function refreshCapabilities() {
+    setCapabilities(getCheckingCapabilities());
+    const detected = await detectCryptoCapabilities();
+    setCapabilities(detected);
+    await refreshCertificates();
+  }
+
+  async function refreshCertificates() {
+    setCertificatesLoading(true);
+    setCertificateError("");
+    try {
+      const found = await listCryptoProCertificates();
+      setCertificates(found);
+      setSignSettings((current) => ({
+        ...current,
+        certificateThumbprints: current.certificateThumbprints.length
+          ? current.certificateThumbprints
+          : found.slice(0, current.signatureCount).map((certificate) => certificate.thumbprint),
+      }));
+    } catch (error) {
+      setCertificateError(errorMessage(error));
+    } finally {
+      setCertificatesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    void detectCryptoCapabilities().then((detected) => {
+      if (active) setCapabilities(detected);
+    });
+    void refreshCertificates();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const actionLabel = useMemo(() => {
+    const count = items.length;
+    if (operation === "verify") return `Проверить ${count || ""} ${pluralize(count, "файл", "файла", "файлов")}`.trim();
+    if (operation === "encrypt") return `Зашифровать ${count || ""} ${pluralize(count, "файл", "файла", "файлов")}`.trim();
+    return `Подписать ${count || ""} ${pluralize(count, "файл", "файла", "файлов")}`.trim();
+  }, [items.length, operation]);
+
+  function addFiles(files: File[]) {
+    const validation = validateFiles(files, items.map((item) => item.file));
+    const nextItems = validation.accepted.map<QueueItem>((file) => ({
+      id: crypto.randomUUID(),
+      file,
+      status: "ready",
+      progress: 0,
+    }));
+    setItems((current) => [...current, ...nextItems]);
+    setMessages(validation.rejected.map(({ file, reason }) => `${file.name}: ${reason}`));
+  }
+
+  function removeFile(id: string) {
+    setItems((current) => current.filter((item) => item.id !== id));
+  }
+
+  async function handleStart() {
+    if (operation === "verify") {
+      await handleVerify();
+      return;
+    }
+    if (operation !== "sign") {
+      setMessages(["Для этого режима криптографическая операция пока не подключена."]);
+      return;
+    }
+    if (signSettings.source !== "cryptopro") {
+      setMessages(["Импорт PFX/P12 пока не подключён. Выберите хранилище Windows / токен через КриптоПро."]);
+      return;
+    }
+    if (signSettings.timestamp) {
+      setMessages(["Для метки времени необходимо настроить адрес TSA. Отключите метку времени и создайте CAdES-BES."]);
+      return;
+    }
+    const thumbprints = signSettings.certificateThumbprints.slice(0, signSettings.signatureCount);
+    if (thumbprints.length !== signSettings.signatureCount || thumbprints.some((value) => !value)) {
+      setMessages(["Выберите сертификат для каждой подписи."]);
+      return;
+    }
+    if (new Set(thumbprints).size !== thumbprints.length) {
+      setMessages(["Для двух независимых подписей выберите два разных сертификата."]);
+      return;
+    }
+
+    setProcessing(true);
+    setMessages([]);
+    setVerificationReports([]);
+    for (const item of items) {
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "processing", progress: 20 } : entry));
+      try {
+        for (let index = 0; index < thumbprints.length; index += 1) {
+          const signature = await signFileWithCryptoPro(item.file, thumbprints[index]);
+          downloadBlob(signature, signatureName(item.file.name, index, thumbprints.length));
+        }
+        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "completed", progress: 100, error: undefined } : entry));
+      } catch (error) {
+        const message = errorMessage(error);
+        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "error", progress: 0, error: message } : entry));
+        setMessages((current) => [...current, `${item.file.name}: ${message}`]);
+      }
+    }
+    setProcessing(false);
+  }
+
+  async function handleVerify() {
+    setVerificationReports([]);
+    const pairs = pairDetachedSignatures(items);
+    if (pairs.errors.length) {
+      setMessages(pairs.errors);
+      return;
+    }
+    setProcessing(true);
+    setMessages([]);
+    for (const { source, signature } of pairs.pairs) {
+      setItems((current) => current.map((entry) =>
+        entry.id === source.id || entry.id === signature.id
+          ? { ...entry, status: "processing", progress: 30 }
+          : entry,
+      ));
+      try {
+        const signers = await verifyFileWithCryptoPro(source.file, signature.file);
+        setVerificationReports((current) => [...current, {
+          id: signature.id,
+          sourceName: source.file.name,
+          signatureName: signature.file.name,
+          valid: true,
+          signers,
+        }]);
+        setItems((current) => current.map((entry) =>
+          entry.id === source.id || entry.id === signature.id
+            ? { ...entry, status: "completed", progress: 100, error: undefined }
+            : entry,
+        ));
+      } catch (error) {
+        const message = errorMessage(error);
+        setVerificationReports((current) => [...current, {
+          id: signature.id,
+          sourceName: source.file.name,
+          signatureName: signature.file.name,
+          valid: false,
+          signers: [],
+          error: message,
+        }]);
+        setItems((current) => current.map((entry) =>
+          entry.id === signature.id
+            ? { ...entry, status: "error", progress: 0, error: message }
+            : entry,
+        ));
+      }
+    }
+    setProcessing(false);
+  }
+
+  return (
+    <div className="app-shell">
+      <div className="page-container">
+        <AppHeader />
+        <main id="main">
+          <section className="hero">
+            <div>
+              <span className="eyebrow">Электронная подпись без загрузки документов</span>
+              <h1>Подпись, проверка и защита файлов <span>на вашем компьютере</span></h1>
+              <p>Российская КЭП через КриптоПро, сертификаты PFX/P12, несколько подписей и пакетная обработка в одном рабочем окне.</p>
+            </div>
+            <div className="hero-trust">
+              <span>Без регистрации</span>
+              <span>Без аналитики</span>
+              <span>Windows-first</span>
+            </div>
+          </section>
+
+          <OperationTabs value={operation} onChange={setOperation} />
+
+          <div className="workspace-grid">
+            <section className="workspace-card">
+              <FileDropzone onSelect={addFiles} />
+              {messages.length > 0 && (
+                <div className="message-stack" role="status">
+                  {messages.map((message) => <p key={message}>{message}</p>)}
+                </div>
+              )}
+              {operation === "verify" && verificationReports.length > 0 && (
+                <VerificationReports reports={verificationReports} />
+              )}
+              <FileQueue items={items} onRemove={removeFile} onClear={() => setItems([])} />
+              <Button className="main-action" disabled={!items.length || processing} onClick={() => void handleStart()}>
+                {processing ? (operation === "verify" ? "Проверка…" : "Подписание…") : actionLabel}
+              </Button>
+              <p className="action-hint">На первом этапе поддерживается пакет до 100 файлов и до 2 ГБ на файл.</p>
+            </section>
+
+            <aside className="sidebar">
+              <SettingsPanel
+                operation={operation}
+                signSettings={signSettings}
+                encryptSettings={encryptSettings}
+                certificates={certificates}
+                certificatesLoading={certificatesLoading}
+                certificateError={certificateError}
+                onSignSettingsChange={setSignSettings}
+                onEncryptSettingsChange={setEncryptSettings}
+              />
+              <ProviderStatus capabilities={capabilities} onRetry={() => void refreshCapabilities()} />
+            </aside>
+          </div>
+        </main>
+        <footer>SignFlow · MIT License · Локальная обработка без скрытых сетевых запросов.</footer>
+      </div>
+    </div>
+  );
+}
+
+function pluralize(value: number, one: string, few: string, many: string): string {
+  const absolute = Math.abs(value) % 100;
+  const last = absolute % 10;
+  if (absolute > 10 && absolute < 20) return many;
+  if (last > 1 && last < 5) return few;
+  if (last === 1) return one;
+  return many;
+}
+
+function VerificationReports({ reports }: { reports: VerificationReport[] }) {
+  return (
+    <section className="verification-reports" aria-label="Результаты проверки">
+      <h2>Результаты проверки</h2>
+      {reports.map((report) => (
+        <details className={`verification-card ${report.valid ? "valid" : "invalid"}`} key={report.id}>
+          <summary>
+            <span className="verification-icon" aria-hidden>{report.valid ? "✓" : "×"}</span>
+            <span>
+              <strong>{report.valid ? "Подпись действительна" : "Подпись недействительна"}</strong>
+              <small>{report.signatureName}</small>
+            </span>
+            <span className="verification-expand">Подробнее</span>
+          </summary>
+          <div className="verification-details">
+            <DetailRow label="Исходный файл" value={report.sourceName} />
+            <DetailRow label="Файл подписи" value={report.signatureName} />
+            <DetailRow label="Целостность" value={report.valid ? "Документ не изменён после подписания" : "Проверка не пройдена"} />
+            {report.error && <DetailRow label="Ошибка" value={report.error} />}
+            {report.signers.map((signer, index) => (
+              <div className="signer-details" key={`${signer.thumbprint}-${index}`}>
+                <h3>{report.signers.length > 1 ? `Подписант ${index + 1}` : "Подписант"}</h3>
+                <DetailRow label="Владелец" value={signer.signer} />
+                <DetailRow label="Издатель" value={signer.issuer} />
+                <DetailRow label="Время подписания" value={signer.signingTime} />
+                <DetailRow label="Срок сертификата" value={`${signer.validFrom} — ${signer.validTo}`} />
+                <DetailRow label="Серийный номер" value={signer.serialNumber} mono />
+                <DetailRow label="Отпечаток SHA-1" value={signer.thumbprint} mono />
+              </div>
+            ))}
+            <p className="verification-note">
+              Проверена криптографическая целостность CAdES. Доверие к цепочке и отзыв сертификата через CRL/OCSP отдельно не проверялись.
+            </p>
+          </div>
+        </details>
+      ))}
+    </section>
+  );
+}
+
+function DetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="verification-row">
+      <span>{label}</span>
+      <strong className={mono ? "mono" : undefined}>{value || "—"}</strong>
+    </div>
+  );
+}
+
+function signatureName(fileName: string, index: number, count: number): string {
+  return count === 1 ? `${fileName}.sig` : `${fileName}.${index + 1}.sig`;
+}
+
+function downloadBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function errorMessage(error: unknown): string {
+  try {
+    return window.cadesplugin?.getLastError?.(error) || (error instanceof Error ? error.message : String(error));
+  } catch {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function pairDetachedSignatures(items: QueueItem[]): {
+  pairs: Array<{ source: QueueItem; signature: QueueItem }>;
+  errors: string[];
+} {
+  const signatures = items.filter((item) => item.file.name.toLowerCase().endsWith(".sig"));
+  const sources = new Map(
+    items
+      .filter((item) => !item.file.name.toLowerCase().endsWith(".sig"))
+      .map((item) => [item.file.name.toLowerCase(), item]),
+  );
+  const errors: string[] = [];
+  const pairs: Array<{ source: QueueItem; signature: QueueItem }> = [];
+
+  if (!signatures.length) errors.push("Добавьте файл подписи с расширением .sig.");
+  for (const signature of signatures) {
+    const expectedName = sourceNameForSignature(signature.file.name).toLowerCase();
+    const source = sources.get(expectedName);
+    if (source) pairs.push({ source, signature });
+    else errors.push(`${signature.file.name}: не найден исходный файл ${expectedName}.`);
+  }
+  for (const source of sources.values()) {
+    if (!pairs.some((pair) => pair.source.id === source.id)) {
+      errors.push(`${source.file.name}: не найден соответствующий файл .sig.`);
+    }
+  }
+  return { pairs, errors };
+}
+
+function sourceNameForSignature(signatureName: string): string {
+  const withoutSig = signatureName.slice(0, -4);
+  return withoutSig.replace(/\.[12]$/, "");
+}

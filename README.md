@@ -42,6 +42,8 @@ npm run check
 
 Individual commands are `npm run typecheck`, `npm run lint`, `npm run test` and `npm run build`.
 
+Dependency security checks are available as `npm run audit` for the complete tree and `npm run audit:prod` for production dependencies. CI blocks moderate, high and critical advisories; Dependabot checks npm and GitHub Actions weekly.
+
 ## GitHub Pages
 
 The application uses Next.js static export. [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) builds and deploys `out/` after every push to `main`, and also supports manual dispatch.

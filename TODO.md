@@ -50,4 +50,4 @@
 - [x] Make public assets respect the GitHub project-page base path.
 - [ ] Add UI tests for signing, verification, encryption and decryption flows.
 - [ ] Add a Windows end-to-end test job with CryptoPro installed.
-- [ ] Review and resolve dependency audit findings before a release.
+- [x] Review and resolve dependency audit findings; enforce `npm audit` in CI and enable Dependabot.

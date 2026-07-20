@@ -9,6 +9,6 @@
 - [ ] Configure **Settings → Pages → Source: GitHub Actions** in the repository.
 - [ ] Add malformed, empty and large-input tests.
 - [ ] Add real CryptoPro and PFX/CMS fixtures.
-- [ ] Review dependency audit findings before creating a release tag.
+- [x] Resolve current dependency audit findings and enable a CI audit gate plus Dependabot.
 - [ ] Complete a Windows browser smoke test with CryptoPro CSP and the extension installed.
 - [ ] Confirm signing, verification, `.p7m` and `.sfenc` round trips on the deployed HTTPS origin.

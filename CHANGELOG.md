@@ -12,6 +12,7 @@
 - AES-256-GCM password encryption and decryption (`.sfenc`) using PBKDF2-SHA-256 with 250,000 iterations.
 - Vitest coverage for password-encryption round trips and error cases.
 - GitHub Pages static-export deployment workflow.
+- Dependency audit enforcement and weekly Dependabot updates.
 
 ### Changed
 
@@ -19,6 +20,7 @@
 - CryptoPro readiness uses the asynchronous CAdES API and a real `CAdESCOM.About` probe.
 - Queue rows now display processing, completion and error states.
 - CI runs type checking, linting, tests and a production build.
+- Updated Next.js to 16.2.10 and pinned patched PostCSS 8.5.20 across the dependency tree.
 - GitHub Pages builds use the `/Signflow` base path for scripts, styles and public assets.
 
 ### Fixed

@@ -41,7 +41,7 @@ The UI states this limitation in verification details.
 
 ## Release requirements
 
-- Review `npm audit` findings without applying breaking upgrades blindly.
+- Keep `npm run audit` at zero moderate/high/critical advisories; review Dependabot updates without applying breaking upgrades blindly.
 - Add malformed-container and cryptographic fixture tests.
 - Add practical file-size limits based on measured browser memory use.
 - Document every future network destination and the data sent to it.

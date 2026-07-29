@@ -2,7 +2,7 @@ name: Build Native Helper Preview
 
 on:
   push:
-    branches: [feature/pdfa-native-helper]
+    branches: [main, feature/pdfa-native-helper]
     paths:
       - "native-helper/**"
       - ".github/workflows/native-helper-preview.yml"
@@ -29,7 +29,7 @@ jobs:
         shell: pwsh
         run: ./native-helper/scripts/Build-Package.ps1
 
-      - name: Smoke test executable
+      - name: Smoke test executable and version
         shell: pwsh
         run: |
           $exe = Resolve-Path "native-helper/package/SignFlow.NativeHelper.exe"
@@ -44,13 +44,16 @@ jobs:
               } catch { }
             }
             if (-not $ready) { throw "Native Helper status endpoint did not start." }
+            if ($status.version -ne "0.1.0-preview.5") {
+              throw "Native Helper version mismatch: expected 0.1.0-preview.5, got $($status.version)."
+            }
           } finally {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
           }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SignFlow-NativeHelper-0.1.0-preview.4-win-x64
+          name: SignFlow-NativeHelper-0.1.0-preview.5-win-x64
           path: native-helper/package
           if-no-files-found: error
           retention-days: 30

@@ -6,6 +6,7 @@
 
 - CryptoPro CAdES-BES detached signing with Windows-store and hardware-token certificates.
 - One or two independent signatures over the same source file.
+- Extended counter-signature mode with a local SignFlow Native Helper adapter for low-level CryptoPro CAdES operations.
 - RSA PFX/P12 import and detached PKCS#7 signing.
 - Detached signature verification with expandable signer and certificate details.
 - CMS EnvelopedData certificate encryption and CryptoPro decryption (`.p7m`).
@@ -18,6 +19,7 @@
 
 ### Changed
 
+- Two independent CryptoPro signatures are now stored as two `SignerInfo` records inside one `.sig` container through `CoSignCades`.
 - The official CryptoPro loader is served locally before any fallback source.
 - CryptoPro readiness uses the asynchronous CAdES API and a real `CAdESCOM.About` probe.
 - Queue rows now display processing, completion and error states.
@@ -27,6 +29,7 @@
 
 ### Fixed
 
+- Fixed the previous two-signature flow producing two separate `.sig` files instead of one multi-signer CAdES container.
 - Fixed CryptoPro `CreateObjectAsync` initialization and delayed extension readiness.
 - Fixed CSP and plug-in version display returning native function source text.
 - Fixed public `cadesplugin_api.js` loading on GitHub project pages.

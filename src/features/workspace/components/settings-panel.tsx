@@ -55,31 +55,15 @@ export function SettingsPanel({
         <h2>Расшифрование</h2>
         <p className="settings-description">Выберите тип добавленного контейнера.</p>
         <div className="segmented-control">
-          <button
-            type="button"
-            className={encryptSettings.mode === "certificate" ? "selected" : ""}
-            onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "certificate" })}
-          >Сертификат (.p7m)</button>
-          <button
-            type="button"
-            className={encryptSettings.mode === "password" ? "selected" : ""}
-            onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "password" })}
-          >Пароль (.sfenc)</button>
+          <button type="button" className={encryptSettings.mode === "certificate" ? "selected" : ""} onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "certificate" })}>Сертификат (.p7m)</button>
+          <button type="button" className={encryptSettings.mode === "password" ? "selected" : ""} onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "password" })}>Пароль (.sfenc)</button>
         </div>
         {encryptSettings.mode === "certificate" ? (
           <div className="notice">КриптоПро автоматически найдёт сертификат и закрытый ключ получателя в хранилище Windows или на токене.</div>
         ) : (
           <>
             <label className="field-label" htmlFor="decryption-password">Пароль</label>
-            <input
-              id="decryption-password"
-              className="select"
-              type="password"
-              autoComplete="current-password"
-              value={encryptSettings.password}
-              onChange={(event) => onEncryptSettingsChange({ ...encryptSettings, password: event.target.value })}
-              placeholder="Пароль контейнера"
-            />
+            <input id="decryption-password" className="select" type="password" autoComplete="current-password" value={encryptSettings.password} onChange={(event) => onEncryptSettingsChange({ ...encryptSettings, password: event.target.value })} placeholder="Пароль контейнера" />
           </>
         )}
       </div>
@@ -92,33 +76,15 @@ export function SettingsPanel({
         <h2>Шифрование</h2>
         <p className="settings-description">Выберите способ защиты результата.</p>
         <div className="segmented-control">
-          <button
-            type="button"
-            className={encryptSettings.mode === "certificate" ? "selected" : ""}
-            onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "certificate" })}
-          >По сертификату</button>
-          <button
-            type="button"
-            className={encryptSettings.mode === "password" ? "selected" : ""}
-            onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "password" })}
-          >По паролю</button>
+          <button type="button" className={encryptSettings.mode === "certificate" ? "selected" : ""} onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "certificate" })}>По сертификату</button>
+          <button type="button" className={encryptSettings.mode === "password" ? "selected" : ""} onClick={() => onEncryptSettingsChange({ ...encryptSettings, mode: "password" })}>По паролю</button>
         </div>
         {encryptSettings.mode === "certificate" ? (
           <>
             <label className="field-label" htmlFor="encryption-certificate">Сертификат получателя</label>
-            <select
-              id="encryption-certificate"
-              className="select"
-              value={encryptSettings.recipientThumbprint}
-              disabled={certificatesLoading}
-              onChange={(event) => onEncryptSettingsChange({ ...encryptSettings, recipientThumbprint: event.target.value })}
-            >
+            <select id="encryption-certificate" className="select" value={encryptSettings.recipientThumbprint} disabled={certificatesLoading} onChange={(event) => onEncryptSettingsChange({ ...encryptSettings, recipientThumbprint: event.target.value })}>
               <option value="">{certificatesLoading ? "Загрузка сертификатов…" : "Выберите сертификат"}</option>
-              {certificates.map((certificate) => (
-                <option key={certificate.thumbprint} value={certificate.thumbprint}>
-                  {certificate.subject} · до {certificate.validTo}
-                </option>
-              ))}
+              {certificates.map((certificate) => <option key={certificate.thumbprint} value={certificate.thumbprint}>{certificate.subject} · до {certificate.validTo}</option>)}
             </select>
             {certificateError && <div className="notice">Не удалось прочитать сертификаты: {certificateError}</div>}
             <div className="notice">Результат: стандартный CMS EnvelopedData в файле <code>.p7m</code>.</div>
@@ -126,15 +92,7 @@ export function SettingsPanel({
         ) : (
           <>
             <label className="field-label" htmlFor="encryption-password">Пароль</label>
-            <input
-              id="encryption-password"
-              className="select"
-              type="password"
-              autoComplete="new-password"
-              value={encryptSettings.password}
-              onChange={(event) => onEncryptSettingsChange({ ...encryptSettings, password: event.target.value })}
-              placeholder="Не менее 8 символов"
-            />
+            <input id="encryption-password" className="select" type="password" autoComplete="new-password" value={encryptSettings.password} onChange={(event) => onEncryptSettingsChange({ ...encryptSettings, password: event.target.value })} placeholder="Не менее 8 символов" />
             <div className="notice">Локальное AES-256-GCM шифрование. Результат сохраняется как <code>.sfenc</code>.</div>
           </>
         )}
@@ -142,14 +100,29 @@ export function SettingsPanel({
     );
   }
 
+  const isCounterSignature = signSettings.mode === "counter-signature";
+
   return (
     <div className="settings-card">
       <h2>Параметры подписи</h2>
+
+      <label className="field-label">Режим</label>
+      <div className="segmented-control">
+        <button type="button" className={!isCounterSignature ? "selected" : ""} onClick={() => onSignSettingsChange({ ...signSettings, mode: "document" })}>Подписать документ</button>
+        <button type="button" className={isCounterSignature ? "selected" : ""} onClick={() => onSignSettingsChange({ ...signSettings, mode: "counter-signature", source: "cryptopro", signatureCount: 1 })}>Контрподпись</button>
+      </div>
+      {isCounterSignature && (
+        <div className="notice">
+          Добавьте исходный документ и существующий <code>.sig</code>. Контрподпись подтверждает выбранную подпись внутри контейнера, а не подписывает документ повторно. Для выполнения потребуется локальный SignFlow Native Helper с низкоуровневым CryptoPro CAdES API.
+        </div>
+      )}
+
       <label className="field-label" htmlFor="signature-source">Источник сертификата</label>
       <select
         id="signature-source"
         className="select"
         value={signSettings.source}
+        disabled={isCounterSignature}
         onChange={(event) => {
           const source = event.target.value as SignSettings["source"];
           onSignSettingsChange({ ...signSettings, source, signatureCount: source === "pfx" ? 1 : signSettings.signatureCount });
@@ -163,98 +136,60 @@ export function SettingsPanel({
         <>
           {Array.from({ length: signSettings.signatureCount }, (_, index) => (
             <div key={index}>
-              <label className="field-label" htmlFor={`certificate-${index}`}>
-                {signSettings.signatureCount === 1 ? "Сертификат" : `Сертификат подписи ${index + 1}`}
-              </label>
-              <select
-                id={`certificate-${index}`}
-                className="select"
-                value={signSettings.certificateThumbprints[index] ?? ""}
-                disabled={certificatesLoading}
-                onChange={(event) => {
-                  const selected = [...signSettings.certificateThumbprints];
-                  selected[index] = event.target.value;
-                  onSignSettingsChange({ ...signSettings, certificateThumbprints: selected });
-                }}
-              >
+              <label className="field-label" htmlFor={`certificate-${index}`}>{signSettings.signatureCount === 1 ? "Сертификат" : `Сертификат подписи ${index + 1}`}</label>
+              <select id={`certificate-${index}`} className="select" value={signSettings.certificateThumbprints[index] ?? ""} disabled={certificatesLoading} onChange={(event) => {
+                const selected = [...signSettings.certificateThumbprints];
+                selected[index] = event.target.value;
+                onSignSettingsChange({ ...signSettings, certificateThumbprints: selected });
+              }}>
                 <option value="">{certificatesLoading ? "Загрузка сертификатов…" : "Выберите сертификат"}</option>
-                {certificates.map((certificate) => (
-                  <option key={certificate.thumbprint} value={certificate.thumbprint}>
-                    {certificate.subject} · до {certificate.validTo}
-                  </option>
-                ))}
+                {certificates.map((certificate) => <option key={certificate.thumbprint} value={certificate.thumbprint}>{certificate.subject} · до {certificate.validTo}</option>)}
               </select>
             </div>
           ))}
           {certificateError && <div className="notice">Не удалось прочитать сертификаты: {certificateError}</div>}
-          {!certificatesLoading && !certificateError && certificates.length === 0 && (
-            <div className="notice">В личном хранилище не найдено сертификатов с закрытым ключом.</div>
-          )}
+          {!certificatesLoading && !certificateError && certificates.length === 0 && <div className="notice">В личном хранилище не найдено сертификатов с закрытым ключом.</div>}
         </>
       )}
-      {signSettings.source === "pfx" && (
+
+      {signSettings.source === "pfx" && !isCounterSignature && (
         <>
           <label className="field-label" htmlFor="pfx-file">Контейнер PFX/P12</label>
-          <input
-            id="pfx-file"
-            className="select"
-            type="file"
-            accept=".pfx,.p12,application/x-pkcs12"
-            onChange={(event) => onSignSettingsChange({ ...signSettings, pfxFile: event.target.files?.[0] })}
-          />
+          <input id="pfx-file" className="select" type="file" accept=".pfx,.p12,application/x-pkcs12" onChange={(event) => onSignSettingsChange({ ...signSettings, pfxFile: event.target.files?.[0] })} />
           {signSettings.pfxFile && <div className="notice">Выбран файл: {signSettings.pfxFile.name}</div>}
           <label className="field-label" htmlFor="pfx-password">Пароль контейнера</label>
-          <input
-            id="pfx-password"
-            className="select"
-            type="password"
-            autoComplete="current-password"
-            value={signSettings.pfxPassword}
-            onChange={(event) => onSignSettingsChange({ ...signSettings, pfxPassword: event.target.value })}
-            placeholder="Пароль PFX/P12"
-          />
+          <input id="pfx-password" className="select" type="password" autoComplete="current-password" value={signSettings.pfxPassword} onChange={(event) => onSignSettingsChange({ ...signSettings, pfxPassword: event.target.value })} placeholder="Пароль PFX/P12" />
           <div className="notice">Поддерживаются RSA-контейнеры. ГОСТ PFX/P12 необходимо импортировать в КриптоПро.</div>
         </>
       )}
 
-      {signSettings.source === "cryptopro" && <><label className="field-label">Количество подписей</label>
-      <div className="segmented-control">
-        <button
-          type="button"
-          className={signSettings.signatureCount === 1 ? "selected" : ""}
-          onClick={() => onSignSettingsChange({ ...signSettings, signatureCount: 1 })}
-        >Одна</button>
-        <button
-          type="button"
-          className={signSettings.signatureCount === 2 ? "selected" : ""}
-          onClick={() => onSignSettingsChange({ ...signSettings, signatureCount: 2 })}
-        >Две независимые</button>
-      </div></>}
+      {signSettings.source === "cryptopro" && !isCounterSignature && (
+        <>
+          <label className="field-label">Количество подписей</label>
+          <div className="segmented-control">
+            <button type="button" className={signSettings.signatureCount === 1 ? "selected" : ""} onClick={() => onSignSettingsChange({ ...signSettings, signatureCount: 1 })}>Одна</button>
+            <button type="button" className={signSettings.signatureCount === 2 ? "selected" : ""} onClick={() => onSignSettingsChange({ ...signSettings, signatureCount: 2 })}>Две независимые</button>
+          </div>
+        </>
+      )}
 
       <label className="check-row">
-        <input
-          type="checkbox"
-          checked={signSettings.timestamp}
-          onChange={(event) => onSignSettingsChange({ ...signSettings, timestamp: event.target.checked })}
-        />
+        <input type="checkbox" checked={signSettings.timestamp} onChange={(event) => onSignSettingsChange({ ...signSettings, timestamp: event.target.checked })} />
         <span><strong>Добавить доверенную метку времени</strong><small>Потребуется явное сетевое обращение к TSA</small></span>
       </label>
       {signSettings.timestamp && (
         <>
           <label className="field-label" htmlFor="tsa-address">Адрес службы TSA</label>
-          <input
-            id="tsa-address"
-            className="select"
-            type="url"
-            value={signSettings.tsaAddress}
-            onChange={(event) => onSignSettingsChange({ ...signSettings, tsaAddress: event.target.value })}
-            placeholder="https://tsa.example.ru/tsp/"
-          />
-          <div className="notice">Будет создана CAdES-T. Хэш подписи отправляется указанной службе времени; документ не отправляется.</div>
+          <input id="tsa-address" className="select" type="url" value={signSettings.tsaAddress} onChange={(event) => onSignSettingsChange({ ...signSettings, tsaAddress: event.target.value })} placeholder="https://tsa.example.ru/tsp/" />
+          <div className="notice">Хэш подписи отправляется указанной службе времени; документ не отправляется.</div>
         </>
       )}
 
-      <div className="notice">Результат: отсоединённая подпись CAdES в файле <code>.sig</code>. Исходный документ не изменяется.</div>
+      <div className="notice">
+        {isCounterSignature
+          ? <>Результат: обновлённый CAdES-контейнер <code>.sig</code> с вложенной контрподписью.</>
+          : <>Результат: один отсоединённый CAdES-контейнер <code>.sig</code>. При двух подписях обе записи находятся внутри одного контейнера.</>}
+      </div>
     </div>
   );
 }

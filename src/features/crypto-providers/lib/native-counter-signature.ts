@@ -52,7 +52,7 @@ async function readNativeHelperStatus(baseUrl: string): Promise<NativeHelperStat
     });
   } catch {
     throw new Error(
-      "SignFlow Native Helper не найден. Настоящая CAdES-контрподпись требует локальный helper с низкоуровневым CryptoPro API.",
+      "Контрподпись пока недоступна в одной только веб-версии SignFlow. Для неё требуется отдельный SignFlow Native Helper, который ещё не выпущен. Обычная подпись и две независимые подписи работают без него.",
     );
   }
   if (!response.ok) throw new Error(`Не удалось проверить SignFlow Native Helper: HTTP ${response.status}.`);

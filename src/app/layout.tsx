@@ -1,6 +1,8 @@
+import type { CSSProperties, ReactNode } from "react";
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import packageJson from "../../package.json";
 import "./globals.css";
+import "./version-footer.css";
 
 export const metadata: Metadata = {
   title: "SignFlow — электронная подпись файлов",
@@ -8,5 +10,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <html lang="ru"><body>{children}</body></html>;
+  const versionStyle = { "--signflow-version": `"${packageJson.version}"` } as CSSProperties;
+  return <html lang="ru"><body style={versionStyle}>{children}</body></html>;
 }

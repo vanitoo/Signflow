@@ -1,0 +1,8 @@
+footer {
+  font-size: 0;
+}
+
+footer::before {
+  content: "SignFlow v" var(--signflow-version) " · MIT License · Локальная обработка без скрытых сетевых запросов.";
+  font-size: 0.875rem;
+}

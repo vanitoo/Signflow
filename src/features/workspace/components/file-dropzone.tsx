@@ -7,12 +7,14 @@ interface FileDropzoneProps {
   disabled?: boolean;
 }
 
+export function SettingsPanelPlaceholder() { return null; }
+
 export function FileDropzone({ onSelect, disabled = false }: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   function accept(files: FileList | null) {
-    if (files?.length) onSelect(Array.from(files));
+    if (files?.length) onSelect(Array.from(files, normalizeDetachedSignatureName));
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -58,4 +60,13 @@ export function FileDropzone({ onSelect, disabled = false }: FileDropzoneProps) 
       <p className="privacy-note">Файлы остаются на этом устройстве</p>
     </div>
   );
+}
+
+function normalizeDetachedSignatureName(file: File): File {
+  const match = file.name.match(/^(.*\.sig)\d+$/i);
+  if (!match) return file;
+  return new File([file], match[1], {
+    type: file.type || "application/pkcs7-signature",
+    lastModified: file.lastModified,
+  });
 }

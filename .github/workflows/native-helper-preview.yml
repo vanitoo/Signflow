@@ -33,7 +33,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Resolve-Path "native-helper/package/SignFlow.NativeHelper.exe"
-          $process = Start-Process $exe -PassThru -WindowStyle Hidden
+          $process = Start-Process $exe -PassThru
           try {
             $ready = $false
             for ($i = 0; $i -lt 20; $i++) {
@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SignFlow-NativeHelper-0.1.0-preview.2-win-x64
+          name: SignFlow-NativeHelper-0.1.0-preview.3-win-x64
           path: native-helper/package
           if-no-files-found: error
           retention-days: 30

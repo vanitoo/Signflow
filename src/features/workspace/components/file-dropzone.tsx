@@ -7,8 +7,6 @@ interface FileDropzoneProps {
   disabled?: boolean;
 }
 
-export function SettingsPanelPlaceholder() { return null; }
-
 export function FileDropzone({ onSelect, disabled = false }: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);

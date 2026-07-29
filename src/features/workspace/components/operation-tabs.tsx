@@ -13,8 +13,10 @@ interface OperationTabsProps {
 }
 
 export function OperationTabs({ value, onChange }: OperationTabsProps) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
   return (
-    <div className="operation-tabs" role="tablist" aria-label="Операция">
+    <div className="operation-tabs" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }} role="tablist" aria-label="Операция">
       {operations.map((operation) => (
         <button
           key={operation.id}
@@ -28,6 +30,10 @@ export function OperationTabs({ value, onChange }: OperationTabsProps) {
           <span>{operation.description}</span>
         </button>
       ))}
+      <a className="operation-tab" href={`${basePath}/pdfa/`} role="tab" aria-selected="false">
+        <strong>PDF/A</strong>
+        <span>Преобразовать PDF в архивный формат PDF/A-2b</span>
+      </a>
     </div>
   );
 }

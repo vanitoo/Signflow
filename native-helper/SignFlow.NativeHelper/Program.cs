@@ -1,25 +1,17 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 const string ServiceName = "SignFlow Native Helper";
-const string Version = "0.1.0-preview.1";
+const string Version = "0.1.0-preview.2";
 const long MaxUploadBytes = 2L * 1024 * 1024 * 1024;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://127.0.0.1:17891");
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = MaxUploadBytes);
 
-var allowedOrigins = new[]
-{
-    "https://vanitoo.github.io",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000"
-};
-
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-    .WithOrigins(allowedOrigins)
+    .WithOrigins("https://vanitoo.github.io", "http://localhost:3000", "http://127.0.0.1:3000")
     .WithMethods("GET", "POST", "OPTIONS")
     .AllowAnyHeader()));
 
@@ -43,11 +35,11 @@ app.MapGet("/v1/status", (ToolLocator tools) =>
     var veraPdf = tools.FindVeraPdf();
     var bridge = tools.FindCryptoProBridge();
     var capabilities = new List<string>();
-    if (ghostscript is not null) capabilities.Add("pdfa-conversion");
+    if (ghostscript is not null && veraPdf is not null) capabilities.Add("pdfa-conversion");
     if (veraPdf is not null) capabilities.Add("pdfa-validation");
     if (bridge is not null) capabilities.Add("cades-counter-signature");
 
-    return Results.Ok(new
+    return Results.Json(new
     {
         service = ServiceName,
         version = Version,
@@ -72,7 +64,7 @@ app.MapPost("/v1/pdf/validate-pdfa", async (HttpRequest request, PdfAService ser
 
     await using var workspace = await TempWorkspace.CreateAsync(file, ct);
     var result = await service.ValidateAsync(workspace.InputPath, form["profile"].FirstOrDefault() ?? "2b", ct);
-    return Results.Ok(result);
+    return Results.Json(result);
 });
 
 app.MapPost("/v1/pdf/convert-to-pdfa", async (HttpRequest request, PdfAService service, CancellationToken ct) =>
@@ -85,7 +77,7 @@ app.MapPost("/v1/pdf/convert-to-pdfa", async (HttpRequest request, PdfAService s
 
     await using var workspace = await TempWorkspace.CreateAsync(file, ct);
     var result = await service.ConvertAsync(workspace.InputPath, workspace.OutputPath, ct);
-    if (!result.Success) return Results.Problem(result.Error, statusCode: 422, title: "Не удалось создать PDF/A-2b");
+    if (!result.Success) return Results.Problem(result.Error, statusCode: result.StatusCode, title: "Не удалось создать PDF/A-2b");
 
     var bytes = await File.ReadAllBytesAsync(workspace.OutputPath, ct);
     var outputName = Path.GetFileNameWithoutExtension(file.FileName) + "_PDFA.pdf";
@@ -119,7 +111,8 @@ static bool LooksLikePdf(string fileName, string? contentType) =>
     fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ||
     string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
 
-static string NormalizeThumbprint(string? value) => Regex.Replace(value ?? string.Empty, "[^0-9A-Fa-f]", string.Empty).ToUpperInvariant();
+static string NormalizeThumbprint(string? value) =>
+    Regex.Replace(value ?? string.Empty, "[^0-9A-Fa-f]", string.Empty).ToUpperInvariant();
 
 sealed class ToolLocator
 {
@@ -145,7 +138,8 @@ sealed class ToolLocator
         Path.Combine(_baseDirectory, "assets", "sRGB.icc"),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "spool", "drivers", "color", "sRGB Color Space Profile.icm"));
 
-    private static string? FirstExisting(params string?[] candidates) => candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path));
+    private static string? FirstExisting(params string?[] candidates) =>
+        candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path));
 
     private static string? FindNewest(string root, string fileName)
     {
@@ -156,43 +150,60 @@ sealed class ToolLocator
     }
 }
 
+sealed record PdfAValidationResult(bool Compliant, string Profile, bool Available, int? ExitCode, object? Report, string? Error);
+
 sealed class PdfAService(ToolLocator tools)
 {
-    public async Task<object> ValidateAsync(string inputPath, string profile, CancellationToken ct)
+    public async Task<PdfAValidationResult> ValidateAsync(string inputPath, string profile, CancellationToken ct)
     {
         var veraPdf = tools.FindVeraPdf();
-        if (veraPdf is null) return new { compliant = false, profile, available = false, error = "veraPDF не найден." };
         var normalizedProfile = profile is "1b" or "2b" or "3b" ? profile : "2b";
-        var run = await ProcessRunner.RunAsync(veraPdf, $"--format json --flavour {normalizedProfile} \"{inputPath}\"", ct);
-        var compliant = run.ExitCode == 0 && (run.StdOut.Contains("\"isCompliant\":true", StringComparison.OrdinalIgnoreCase) || run.StdOut.Contains("\"compliant\":true", StringComparison.OrdinalIgnoreCase));
-        return new { compliant, profile = normalizedProfile, available = true, exitCode = run.ExitCode, report = TryParseJson(run.StdOut), error = compliant ? null : Trim(run.StdErr + "\n" + run.StdOut) };
+        if (veraPdf is null)
+            return new(false, normalizedProfile, false, null, null, "Встроенный модуль проверки PDF/A не найден.");
+
+        var run = await ProcessRunner.RunAsync(veraPdf, ["--format", "json", "--flavour", normalizedProfile, inputPath], ct);
+        var compliant = run.ExitCode == 0 &&
+            (run.StdOut.Contains("\"isCompliant\":true", StringComparison.OrdinalIgnoreCase) ||
+             run.StdOut.Contains("\"compliant\":true", StringComparison.OrdinalIgnoreCase));
+
+        return new(
+            compliant,
+            normalizedProfile,
+            true,
+            run.ExitCode,
+            TryParseJson(run.StdOut),
+            compliant ? null : Trim(run.StdErr + Environment.NewLine + run.StdOut));
     }
 
     public async Task<OperationResult> ConvertAsync(string inputPath, string outputPath, CancellationToken ct)
     {
         var ghostscript = tools.FindGhostscript();
+        var veraPdf = tools.FindVeraPdf();
         var iccProfile = tools.FindIccProfile();
-        if (ghostscript is null) return OperationResult.Fail("Ghostscript не найден. Установите Ghostscript x64 или задайте SIGNFLOW_GHOSTSCRIPT.", 503);
-        if (iccProfile is null) return OperationResult.Fail("Не найден sRGB ICC-профиль. Укажите SIGNFLOW_ICC_PROFILE.", 503);
+        if (ghostscript is null) return OperationResult.Fail("Встроенный модуль преобразования PDF/A не найден.", 503);
+        if (veraPdf is null) return OperationResult.Fail("Встроенный модуль проверки PDF/A не найден.", 503);
+        if (iccProfile is null) return OperationResult.Fail("Не найден цветовой профиль sRGB.", 503);
 
         var definitionPath = Path.Combine(Path.GetDirectoryName(outputPath)!, "PDFA_def.ps");
         var escapedIcc = iccProfile.Replace("\\", "/").Replace("(", "\\(").Replace(")", "\\)");
         await File.WriteAllTextAsync(definitionPath, PdfADefinition(escapedIcc), ct);
 
-        var args = string.Join(' ', new[]
+        var args = new[]
         {
             "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dPDFA=2", "-dPDFACompatibilityPolicy=1",
             "-sDEVICE=pdfwrite", "-sColorConversionStrategy=RGB", "-sProcessColorModel=DeviceRGB",
             "-dEmbedAllFonts=true", "-dSubsetFonts=true", "-dDetectDuplicateImages=true",
-            $"-sOutputFile=\"{outputPath}\"", $"\"{definitionPath}\"", $"\"{inputPath}\""
-        });
+            $"-sOutputFile={outputPath}", definitionPath, inputPath
+        };
+
         var run = await ProcessRunner.RunAsync(ghostscript, args, ct);
-        if (run.ExitCode != 0 || !File.Exists(outputPath)) return OperationResult.Fail(Trim(run.StdErr + "\n" + run.StdOut), 422);
+        if (run.ExitCode != 0 || !File.Exists(outputPath))
+            return OperationResult.Fail(Trim(run.StdErr + Environment.NewLine + run.StdOut), 422);
 
         var validation = await ValidateAsync(outputPath, "2b", ct);
-        var json = JsonSerializer.Serialize(validation);
-        if (!json.Contains("\"compliant\":true", StringComparison.OrdinalIgnoreCase))
-            return OperationResult.Fail("Ghostscript создал PDF, но veraPDF не подтвердил PDF/A-2b: " + Trim(json), 422);
+        if (!validation.Compliant)
+            return OperationResult.Fail("Файл создан, но проверка PDF/A-2b не пройдена: " + Trim(JsonSerializer.Serialize(validation)), 422);
+
         return OperationResult.Ok();
     }
 
@@ -202,17 +213,21 @@ sealed class PdfAService(ToolLocator tools)
         catch { return value; }
     }
 
-    private static string Trim(string value) => value.Trim().Length > 4000 ? value.Trim()[..4000] : value.Trim();
+    private static string Trim(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length > 4000 ? trimmed[..4000] : trimmed;
+    }
 
-    private static string PdfADefinition(string iccPath) => $"""
-%!PS-Adobe-3.0
-[/_objdef {{icc_PDFA}} /type /stream /OBJ pdfmark
-[{{icc_PDFA}} << /N 3 >> /PUT pdfmark
-[{{icc_PDFA}} ({iccPath}) (r) file /PUT pdfmark
-[/_objdef {{OutputIntent_PDFA}} /type /dict /OBJ pdfmark
-[{{OutputIntent_PDFA}} << /Type /OutputIntent /S /GTS_PDFA1 /DestOutputProfile {{icc_PDFA}} /OutputConditionIdentifier (sRGB) >> /PUT pdfmark
-[{{Catalog}} << /OutputIntents [{{OutputIntent_PDFA}}] >> /PUT pdfmark
-""";
+    private static string PdfADefinition(string iccPath) => string.Join(Environment.NewLine,
+        "%!PS-Adobe-3.0",
+        "[/_objdef {icc_PDFA} /type /stream /OBJ pdfmark",
+        "[{icc_PDFA} << /N 3 >> /PUT pdfmark",
+        $"[{{icc_PDFA}} ({iccPath}) (r) file /PUT pdfmark",
+        "[/_objdef {OutputIntent_PDFA} /type /dict /OBJ pdfmark",
+        "[{OutputIntent_PDFA} << /Type /OutputIntent /S /GTS_PDFA1 /DestOutputProfile {icc_PDFA} /OutputConditionIdentifier (sRGB) >> /PUT pdfmark",
+        "[{Catalog} << /OutputIntents [{OutputIntent_PDFA}] >> /PUT pdfmark",
+        string.Empty);
 }
 
 sealed class CounterSignatureService(ToolLocator tools)
@@ -220,11 +235,14 @@ sealed class CounterSignatureService(ToolLocator tools)
     public async Task<OperationResult> CounterSignAsync(string inputPath, string outputPath, string thumbprint, int signerIndex, CancellationToken ct)
     {
         var bridge = tools.FindCryptoProBridge();
-        if (bridge is null) return OperationResult.Fail("Нативный CryptoPro bridge не найден. Соберите SignFlow.CryptoProBridge с установленным CryptoPro ЭЦП SDK.", 503);
-        var run = await ProcessRunner.RunAsync(bridge, $"counter-sign --input \"{inputPath}\" --output \"{outputPath}\" --thumbprint {thumbprint} --signer-index {signerIndex}", ct);
+        if (bridge is null) return OperationResult.Fail("Модуль CryptoPro для контрподписи не найден.", 503);
+
+        var run = await ProcessRunner.RunAsync(bridge,
+            ["counter-sign", "--input", inputPath, "--output", outputPath, "--thumbprint", thumbprint, "--signer-index", signerIndex.ToString()], ct);
+
         return run.ExitCode == 0 && File.Exists(outputPath)
             ? OperationResult.Ok()
-            : OperationResult.Fail((run.StdErr + "\n" + run.StdOut).Trim(), 422);
+            : OperationResult.Fail((run.StdErr + Environment.NewLine + run.StdOut).Trim(), 422);
     }
 }
 
@@ -238,21 +256,30 @@ readonly record struct ProcessResult(int ExitCode, string StdOut, string StdErr)
 
 static class ProcessRunner
 {
-    public static async Task<ProcessResult> RunAsync(string executable, string arguments, CancellationToken ct)
+    public static async Task<ProcessResult> RunAsync(string executable, IEnumerable<string> arguments, CancellationToken ct)
     {
-        using var process = new Process
+        var isBatch = executable.EndsWith(".bat", StringComparison.OrdinalIgnoreCase) ||
+                      executable.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase);
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = executable,
-                Arguments = arguments,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                WorkingDirectory = Path.GetDirectoryName(executable) ?? AppContext.BaseDirectory
-            }
+            FileName = isBatch ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : executable,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(executable) ?? AppContext.BaseDirectory
         };
+
+        if (isBatch)
+        {
+            startInfo.ArgumentList.Add("/d");
+            startInfo.ArgumentList.Add("/s");
+            startInfo.ArgumentList.Add("/c");
+            startInfo.ArgumentList.Add(executable);
+        }
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+
+        using var process = new Process { StartInfo = startInfo };
         process.Start();
         var stdout = process.StandardOutput.ReadToEndAsync(ct);
         var stderr = process.StandardError.ReadToEndAsync(ct);
@@ -280,7 +307,8 @@ sealed class TempWorkspace : IAsyncDisposable
         Directory.CreateDirectory(directory);
         var safeName = Path.GetFileName(file.FileName);
         var input = Path.Combine(directory, string.IsNullOrWhiteSpace(safeName) ? "input.bin" : safeName);
-        await using var stream = new FileStream(input, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var stream = new FileStream(input, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
         await file.CopyToAsync(stream, ct);
         return new TempWorkspace(directory, input);
     }

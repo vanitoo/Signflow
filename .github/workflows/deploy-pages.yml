@@ -13,6 +13,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       GITHUB_PAGES: "true"
     steps:
@@ -22,7 +23,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Restore node_modules cache
+        id: node-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node22-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build

@@ -1,0 +1,48 @@
+name: Build Native Helper Preview
+
+on:
+  push:
+    branches: [feature/pdfa-native-helper]
+    paths:
+      - "native-helper/**"
+      - ".github/workflows/native-helper-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-helper:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore native-helper/SignFlow.NativeHelper/SignFlow.NativeHelper.csproj
+
+      - name: Publish win-x64
+        run: >-
+          dotnet publish native-helper/SignFlow.NativeHelper/SignFlow.NativeHelper.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -o native-helper/dist
+
+      - name: Copy documentation
+        shell: pwsh
+        run: |
+          Copy-Item native-helper/README.md native-helper/dist/README.md
+          New-Item -ItemType Directory -Force native-helper/dist/assets | Out-Null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SignFlow-NativeHelper-0.1.0-preview.1-win-x64
+          path: native-helper/dist
+          if-no-files-found: error
+          retention-days: 30

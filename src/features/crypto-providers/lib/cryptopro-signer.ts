@@ -50,6 +50,7 @@ interface SignedData {
   propset_ContentEncoding(value: number): Promise<void>;
   propset_Content(value: string): Promise<void>;
   SignCades(signer: Signer, type: number, detached: boolean): Promise<string>;
+  CoSignCades(signer: Signer, type: number): Promise<string>;
   VerifyCades(signature: string, type: number, detached: boolean): Promise<void>;
   Signers: AsyncValue<Signers>;
   GetMsgType(signature: string): Promise<number>;
@@ -119,6 +120,49 @@ export async function signFileWithCryptoPro(
   thumbprint: string,
   options: { timestamp: boolean; tsaAddress: string } = { timestamp: false, tsaAddress: "" },
 ): Promise<Blob> {
+  const { store, signer } = await createSigner(thumbprint, options);
+  try {
+    const signedData = await createObject<SignedData>("CAdESCOM.CadesSignedData");
+    await signedData.propset_ContentEncoding(CADESCOM_BASE64_TO_BINARY);
+    await signedData.propset_Content(await fileToBase64(file));
+    const signature = await signedData.SignCades(
+      signer,
+      options.timestamp ? CADESCOM_CADES_T : CADESCOM_CADES_BES,
+      true,
+    );
+    return signatureBlob(signature);
+  } finally {
+    await store.Close();
+  }
+}
+
+export async function coSignFileWithCryptoPro(
+  file: File,
+  signatureFile: File,
+  thumbprint: string,
+  options: { timestamp: boolean; tsaAddress: string } = { timestamp: false, tsaAddress: "" },
+): Promise<Blob> {
+  const existingSignature = await signatureFileToBase64(signatureFile);
+  const { store, signer } = await createSigner(thumbprint, options);
+  try {
+    const signedData = await createObject<SignedData>("CAdESCOM.CadesSignedData");
+    await signedData.propset_ContentEncoding(CADESCOM_BASE64_TO_BINARY);
+    await signedData.propset_Content(await fileToBase64(file));
+    await signedData.VerifyCades(existingSignature, CADESCOM_CADES_BES, true);
+    const signature = await signedData.CoSignCades(
+      signer,
+      options.timestamp ? CADESCOM_CADES_T : CADESCOM_CADES_BES,
+    );
+    return signatureBlob(signature);
+  } finally {
+    await store.Close();
+  }
+}
+
+async function createSigner(
+  thumbprint: string,
+  options: { timestamp: boolean; tsaAddress: string },
+): Promise<{ store: Store; signer: Signer }> {
   const store = await createObject<Store>("CAdESCOM.Store");
   await store.Open(CAPICOM_CURRENT_USER_STORE, CAPICOM_MY_STORE, CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED);
   try {
@@ -134,19 +178,15 @@ export async function signFileWithCryptoPro(
       await signer.propset_CheckCertificate(true);
       await signer.propset_TSAAddress(options.tsaAddress);
     }
-
-    const signedData = await createObject<SignedData>("CAdESCOM.CadesSignedData");
-    await signedData.propset_ContentEncoding(CADESCOM_BASE64_TO_BINARY);
-    await signedData.propset_Content(await fileToBase64(file));
-    const signature = await signedData.SignCades(
-      signer,
-      options.timestamp ? CADESCOM_CADES_T : CADESCOM_CADES_BES,
-      true,
-    );
-    return new Blob([base64ToArrayBuffer(signature)], { type: "application/pkcs7-signature" });
-  } finally {
+    return { store, signer };
+  } catch (error) {
     await store.Close();
+    throw error;
   }
+}
+
+function signatureBlob(signature: string): Blob {
+  return new Blob([base64ToArrayBuffer(signature)], { type: "application/pkcs7-signature" });
 }
 
 export interface CryptoProVerificationResult {
@@ -273,9 +313,7 @@ async function createObject<T>(name: string): Promise<T> {
   const plugin = window.cadesplugin;
   if (!plugin) throw new Error("API КриптоПро не загружен.");
   await Promise.resolve(plugin);
-  if (typeof plugin.CreateObjectAsync !== "function") {
-    throw new Error("Асинхронный API КриптоПро недоступен.");
-  }
+  if (typeof plugin.CreateObjectAsync !== "function") throw new Error("Асинхронный API КриптоПро недоступен.");
   let lastError: unknown;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -307,9 +345,7 @@ async function signatureFileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   const asText = new TextDecoder("ascii").decode(bytes).replace(/\s/g, "");
-  if (asText.length > 0 && asText.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(asText)) {
-    return asText;
-  }
+  if (asText.length > 0 && asText.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(asText)) return asText;
   return arrayBufferToBase64(buffer);
 }
 

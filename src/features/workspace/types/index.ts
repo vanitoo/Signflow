@@ -11,12 +11,15 @@ export interface QueueItem {
 }
 
 export type SignatureSource = "cryptopro" | "pfx";
+export type SignatureMode = "document" | "counter-signature";
 export type EncryptionMode = "certificate" | "password";
 
 export interface SignSettings {
   source: SignatureSource;
+  mode: SignatureMode;
   signatureCount: 1 | 2;
   certificateThumbprints: string[];
+  counterSignerIndex: number;
   pfxFile?: File;
   pfxPassword: string;
   detached: true;

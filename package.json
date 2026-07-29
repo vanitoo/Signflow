@@ -16,7 +16,7 @@
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
-    "next": "16.2.10",
+    "next": "16.2.11",
     "node-forge": "^1.4.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"

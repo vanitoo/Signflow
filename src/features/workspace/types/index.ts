@@ -19,6 +19,7 @@ export interface SignSettings {
   mode: SignatureMode;
   signatureCount: 1 | 2;
   certificateThumbprints: string[];
+  counterSignerIndex: number;
   pfxFile?: File;
   pfxPassword: string;
   detached: true;

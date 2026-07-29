@@ -1,0 +1,56 @@
+name: Build Native Helper Preview
+
+on:
+  push:
+    branches: [feature/pdfa-native-helper]
+    paths:
+      - "native-helper/**"
+      - ".github/workflows/native-helper-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-helper:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore native-helper/SignFlow.NativeHelper/SignFlow.NativeHelper.csproj
+
+      - name: Build and assemble package
+        shell: pwsh
+        run: ./native-helper/scripts/Build-Package.ps1
+
+      - name: Smoke test executable
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "native-helper/package/SignFlow.NativeHelper.exe"
+          $process = Start-Process $exe -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $status = Invoke-RestMethod "http://127.0.0.1:17891/v1/status"
+                if ($status.service -eq "SignFlow Native Helper") { $ready = $true; break }
+              } catch { }
+            }
+            if (-not $ready) { throw "Native Helper status endpoint did not start." }
+          } finally {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SignFlow-NativeHelper-0.1.0-preview.4-win-x64
+          path: native-helper/package
+          if-no-files-found: error
+          retention-days: 30

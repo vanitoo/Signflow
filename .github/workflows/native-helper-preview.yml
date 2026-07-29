@@ -25,24 +25,32 @@ jobs:
       - name: Restore
         run: dotnet restore native-helper/SignFlow.NativeHelper/SignFlow.NativeHelper.csproj
 
-      - name: Publish win-x64
-        run: >-
-          dotnet publish native-helper/SignFlow.NativeHelper/SignFlow.NativeHelper.csproj
-          -c Release
-          -r win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -o native-helper/dist
+      - name: Build and assemble package
+        shell: pwsh
+        run: ./native-helper/scripts/Build-Package.ps1
 
-      - name: Copy documentation
+      - name: Smoke test executable
         shell: pwsh
         run: |
-          Copy-Item native-helper/README.md native-helper/dist/README.md
-          New-Item -ItemType Directory -Force native-helper/dist/assets | Out-Null
+          $exe = Resolve-Path "native-helper/package/SignFlow.NativeHelper.exe"
+          $process = Start-Process $exe -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $status = Invoke-RestMethod "http://127.0.0.1:17891/v1/status"
+                if ($status.service -eq "SignFlow Native Helper") { $ready = $true; break }
+              } catch { }
+            }
+            if (-not $ready) { throw "Native Helper status endpoint did not start." }
+          } finally {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SignFlow-NativeHelper-0.1.0-preview.1-win-x64
-          path: native-helper/dist
+          name: SignFlow-NativeHelper-0.1.0-preview.2-win-x64
+          path: native-helper/package
           if-no-files-found: error
           retention-days: 30

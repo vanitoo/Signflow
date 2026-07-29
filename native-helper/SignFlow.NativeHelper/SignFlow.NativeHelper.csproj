@@ -3,9 +3,11 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>WinExe</OutputType>
     <AssemblyName>SignFlow.NativeHelper</AssemblyName>
     <RootNamespace>SignFlow.NativeHelper</RootNamespace>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.3</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

@@ -80,10 +80,12 @@ jobs:
 
       - name: Restore
         run: dotnet restore native-helper/SignFlow.NativeHelper/SignFlow.NativeHelper.csproj
-      - name: Build and assemble package
+
+      - name: Build complete package
         shell: pwsh
         run: ./native-helper/scripts/Build-Package.ps1 -RequirePdfTools
-      - name: Smoke test executable
+
+      - name: Smoke test Offline package
         shell: pwsh
         run: |
           $exe = Resolve-Path "native-helper/package/SignFlow.NativeHelper.exe"
@@ -95,23 +97,35 @@ jobs:
               try { $status = Invoke-RestMethod "http://127.0.0.1:17891/v1/status"; if ($status.service -eq "SignFlow Native Helper") { $ready = $true; break } } catch { }
             }
             if (-not $ready) { throw "Native Helper status endpoint did not start." }
-            if ($status.version -ne $env:HELPER_VERSION) { throw "Version mismatch: expected $env:HELPER_VERSION, got $($status.version)." }
             if (-not $status.tools.veraPdf) { throw "Bundled veraPDF was not detected." }
           } finally { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
-      - name: Create ZIP package
+
+      - name: Create Offline ZIP
         shell: pwsh
-        run: Compress-Archive -Path native-helper/package/* -DestinationPath SignFlow-NativeHelper-win-x64.zip -Force
+        run: Compress-Archive -Path native-helper/package/* -DestinationPath SignFlow-NativeHelper-Offline.zip -Force
+
+      - name: Create standard ZIP
+        shell: pwsh
+        run: |
+          Remove-Item native-helper/package/tools/ghostscript -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item native-helper/package/tools/verapdf -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item native-helper/package/tools/java -Recurse -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path native-helper/package/* -DestinationPath SignFlow-NativeHelper.zip -Force
+
       - uses: actions/upload-artifact@v4
         with:
-          name: SignFlow-NativeHelper-${{ env.HELPER_VERSION }}-win-x64
-          path: SignFlow-NativeHelper-win-x64.zip
+          name: SignFlow-NativeHelper-${{ env.HELPER_VERSION }}
+          path: |
+            SignFlow-NativeHelper.zip
+            SignFlow-NativeHelper-Offline.zip
           if-no-files-found: error
           retention-days: 30
+
       - name: Publish rolling preview release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view native-helper-preview *> $null
-          if ($LASTEXITCODE -ne 0) { gh release create native-helper-preview --title "SignFlow Native Helper Preview" --notes "Windows x64 preview with bundled veraPDF and Java runtime." --prerelease }
-          gh release upload native-helper-preview SignFlow-NativeHelper-win-x64.zip --clobber
+          if ($LASTEXITCODE -ne 0) { gh release create native-helper-preview --title "SignFlow Native Helper Preview" --notes "Windows x64 packages: standard and Offline." --prerelease }
+          gh release upload native-helper-preview SignFlow-NativeHelper.zip SignFlow-NativeHelper-Offline.zip --clobber

@@ -9,26 +9,80 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-helper:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      HELPER_VERSION: 0.1.0-preview.6
+      VERAPDF_VERSION: 1.30.1
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Bundle veraPDF and Java runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tools = Join-Path $env:GITHUB_WORKSPACE "native-helper/tools"
+          $veraTarget = Join-Path $tools "verapdf"
+          $javaTarget = Join-Path $tools "java"
+          $download = Join-Path $env:RUNNER_TEMP "verapdf-installer.zip"
+          $unpack = Join-Path $env:RUNNER_TEMP "verapdf-installer"
+          Remove-Item $veraTarget, $javaTarget, $unpack -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $tools, $unpack | Out-Null
+          Invoke-WebRequest "https://software.verapdf.org/releases/1.30/verapdf-greenfield-$env:VERAPDF_VERSION-installer.zip" -OutFile $download
+          Expand-Archive $download -DestinationPath $unpack -Force
+          $installer = Get-ChildItem $unpack -Recurse -Filter "verapdf-izpack-installer-*.jar" | Select-Object -First 1
+          if (-not $installer) { throw "veraPDF installer jar was not found." }
+          $escapedTarget = [System.Security.SecurityElement]::Escape($veraTarget)
+          $autoInstall = Join-Path $env:RUNNER_TEMP "verapdf-auto-install.xml"
+          @"
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <AutomatedInstallation langpack="eng">
+            <com.izforge.izpack.panels.htmlhello.HTMLHelloPanel id="welcome"/>
+            <com.izforge.izpack.panels.target.TargetPanel id="install_dir"><installpath>$escapedTarget</installpath></com.izforge.izpack.panels.target.TargetPanel>
+            <com.izforge.izpack.panels.packs.PacksPanel id="sdk_pack_select">
+              <pack index="0" name="veraPDF GUI" selected="true"/>
+              <pack index="1" name="veraPDF Windows Scripts" selected="true"/>
+              <pack index="2" name="veraPDF Validation model" selected="false"/>
+              <pack index="3" name="veraPDF Documentation" selected="false"/>
+              <pack index="4" name="veraPDF Sample Plugins" selected="false"/>
+            </com.izforge.izpack.panels.packs.PacksPanel>
+            <com.izforge.izpack.panels.install.InstallPanel id="install"/>
+            <com.izforge.izpack.panels.finish.FinishPanel id="finish"/>
+          </AutomatedInstallation>
+          "@ | Set-Content $autoInstall -Encoding UTF8
+          & java -jar $installer.FullName $autoInstall
+          if ($LASTEXITCODE -ne 0) { throw "veraPDF unattended installation failed." }
+          & (Join-Path $env:JAVA_HOME "bin/jlink.exe") --add-modules ALL-MODULE-PATH --strip-debug --no-header-files --no-man-pages --compress=2 --output $javaTarget
+          if ($LASTEXITCODE -ne 0) { throw "Unable to create bundled Java runtime." }
+          $veraBat = Join-Path $veraTarget "verapdf.bat"
+          if (!(Test-Path $veraBat)) { $veraBat = Get-ChildItem $veraTarget -Recurse -Filter "verapdf.bat" | Select-Object -First 1 -ExpandProperty FullName }
+          if (!$veraBat) { throw "Installed veraPDF launcher was not found." }
+          Copy-Item $veraBat (Join-Path $veraTarget "verapdf-original.bat") -Force
+          @"
+          @echo off
+          set "JAVA_HOME=%~dp0..\java"
+          set "PATH=%JAVA_HOME%\bin;%PATH%"
+          call "%~dp0verapdf-original.bat" %*
+          "@ | Set-Content (Join-Path $veraTarget "verapdf.bat") -Encoding ASCII
+          & (Join-Path $veraTarget "verapdf.bat") --version
+          if ($LASTEXITCODE -ne 0) { throw "Bundled veraPDF self-test failed." }
 
       - name: Restore
         run: dotnet restore native-helper/SignFlow.NativeHelper/SignFlow.NativeHelper.csproj
-
       - name: Build and assemble package
         shell: pwsh
-        run: ./native-helper/scripts/Build-Package.ps1
-
+        run: ./native-helper/scripts/Build-Package.ps1 -RequirePdfTools
       - name: Smoke test executable
         shell: pwsh
         run: |
@@ -36,21 +90,28 @@ jobs:
           $process = Start-Process $exe -PassThru
           try {
             $ready = $false
-            for ($i = 0; $i -lt 20; $i++) {
+            for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Milliseconds 500
-              try {
-                $status = Invoke-RestMethod "http://127.0.0.1:17891/v1/status"
-                if ($status.service -eq "SignFlow Native Helper") { $ready = $true; break }
-              } catch { }
+              try { $status = Invoke-RestMethod "http://127.0.0.1:17891/v1/status"; if ($status.service -eq "SignFlow Native Helper") { $ready = $true; break } } catch { }
             }
             if (-not $ready) { throw "Native Helper status endpoint did not start." }
-          } finally {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-          }
-
+            if ($status.version -ne $env:HELPER_VERSION) { throw "Version mismatch: expected $env:HELPER_VERSION, got $($status.version)." }
+            if (-not $status.tools.veraPdf) { throw "Bundled veraPDF was not detected." }
+          } finally { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+      - name: Create ZIP package
+        shell: pwsh
+        run: Compress-Archive -Path native-helper/package/* -DestinationPath SignFlow-NativeHelper-win-x64.zip -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: SignFlow-NativeHelper-0.1.0-preview.4-win-x64
-          path: native-helper/package
+          name: SignFlow-NativeHelper-${{ env.HELPER_VERSION }}-win-x64
+          path: SignFlow-NativeHelper-win-x64.zip
           if-no-files-found: error
           retention-days: 30
+      - name: Publish rolling preview release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view native-helper-preview *> $null
+          if ($LASTEXITCODE -ne 0) { gh release create native-helper-preview --title "SignFlow Native Helper Preview" --notes "Windows x64 preview with bundled veraPDF and Java runtime." --prerelease }
+          gh release upload native-helper-preview SignFlow-NativeHelper-win-x64.zip --clobber

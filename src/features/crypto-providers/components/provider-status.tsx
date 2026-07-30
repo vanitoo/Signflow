@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { CryptoCapability } from "../types";
 
 const NATIVE_HELPER_STATUS_URL = "http://127.0.0.1:17891/v1/status";
-const NATIVE_HELPER_DOWNLOAD_URL = "https://github.com/vanitoo/Signflow/releases/download/native-helper-preview/SignFlow-NativeHelper-win-x64.zip";
+const NATIVE_HELPER_DOWNLOAD_URL = "https://github.com/vanitoo/Signflow/releases/download/native-helper-preview/SignFlow-NativeHelper.zip";
+const NATIVE_HELPER_OFFLINE_DOWNLOAD_URL = "https://github.com/vanitoo/Signflow/releases/download/native-helper-preview/SignFlow-NativeHelper-Offline.zip";
 
 interface NativeHelperStatus {
   service: string;
@@ -79,11 +80,17 @@ export function ProviderStatus({ capabilities, onRetry }: ProviderStatusProps) {
             <strong>SignFlow Native Helper</strong>
             <p>{helperDescription}</p>
             {!helperChecking && !helper && (
-              <p>
-                <a className="provider-retry" href={NATIVE_HELPER_DOWNLOAD_URL}>
-                  Скачать Helper для Windows x64
-                </a>
-              </p>
+              <div>
+                <p>
+                  <a className="provider-retry" href={NATIVE_HELPER_DOWNLOAD_URL}>
+                    Скачать Helper для Windows x64
+                  </a>
+                </p>
+                <small>
+                  Нужна работа без Интернета?{" "}
+                  <a href={NATIVE_HELPER_OFFLINE_DOWNLOAD_URL}>Скачать Offline-версию</a>
+                </small>
+              </div>
             )}
             {helper && (
               <small>

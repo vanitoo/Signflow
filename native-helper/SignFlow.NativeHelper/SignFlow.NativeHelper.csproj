@@ -7,7 +7,7 @@
     <OutputType>WinExe</OutputType>
     <AssemblyName>SignFlow.NativeHelper</AssemblyName>
     <RootNamespace>SignFlow.NativeHelper</RootNamespace>
-    <Version>0.1.0-preview.4</Version>
+    <Version>0.1.0-preview.6</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

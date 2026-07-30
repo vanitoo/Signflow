@@ -14,7 +14,7 @@ permissions:
 jobs:
   build-helper:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       HELPER_VERSION: 0.1.0-preview.6
       VERAPDF_VERSION: 1.30.1
@@ -27,6 +27,20 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Bundle Ghostscript
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          choco install ghostscript -y --no-progress
+          $gsExe = Get-ChildItem "C:\Program Files\gs" -Recurse -Filter "gswin64c.exe" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $gsExe) { throw "Ghostscript executable was not found after installation." }
+          $versionRoot = Split-Path (Split-Path $gsExe.FullName -Parent) -Parent
+          $target = Join-Path $env:GITHUB_WORKSPACE "native-helper/tools/ghostscript"
+          Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item (Join-Path $versionRoot "*") $target -Recurse -Force
+          if (!(Test-Path (Join-Path $target "bin/gswin64c.exe"))) { throw "Bundled Ghostscript layout is invalid." }
 
       - name: Bundle veraPDF and Java runtime
         shell: pwsh
@@ -97,6 +111,7 @@ jobs:
               try { $status = Invoke-RestMethod "http://127.0.0.1:17891/v1/status"; if ($status.service -eq "SignFlow Native Helper") { $ready = $true; break } } catch { }
             }
             if (-not $ready) { throw "Native Helper status endpoint did not start." }
+            if (-not $status.tools.ghostscript) { throw "Bundled Ghostscript was not detected." }
             if (-not $status.tools.veraPdf) { throw "Bundled veraPDF was not detected." }
           } finally { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
 

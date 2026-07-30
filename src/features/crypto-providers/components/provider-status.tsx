@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CryptoCapability } from "../types";
 
 const NATIVE_HELPER_STATUS_URL = "http://127.0.0.1:17891/v1/status";
+const NATIVE_HELPER_DOWNLOAD_URL = "https://github.com/vanitoo/Signflow/releases/download/native-helper-preview/SignFlow-NativeHelper-win-x64.zip";
 
 interface NativeHelperStatus {
   service: string;
@@ -58,7 +59,7 @@ export function ProviderStatus({ capabilities, onRetry }: ProviderStatusProps) {
     ? "Проверяем локальное приложение…"
     : helper
       ? `Подключён ${helper.service} ${helper.version}. ${describeTools(helper)}`
-      : "Не запущен. Запустите SignFlow Native Helper на этом компьютере.";
+      : "Не найден. Скачайте архив, распакуйте его и запустите SignFlow.NativeHelper.exe.";
 
   return (
     <section className="provider-panel" aria-label="Криптографические возможности">
@@ -77,6 +78,13 @@ export function ProviderStatus({ capabilities, onRetry }: ProviderStatusProps) {
           <div>
             <strong>SignFlow Native Helper</strong>
             <p>{helperDescription}</p>
+            {!helperChecking && !helper && (
+              <p>
+                <a className="provider-retry" href={NATIVE_HELPER_DOWNLOAD_URL}>
+                  Скачать Helper для Windows x64
+                </a>
+              </p>
+            )}
             {helper && (
               <small>
                 PDF/A: {helper.capabilities.includes("pdfa-conversion") ? "готово" : "неполная установка"}; контрподпись: {helper.capabilities.includes("cades-counter-signature") ? "готово" : "bridge не найден"}
